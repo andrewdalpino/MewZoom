@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--num_dataset_processes", default=8, type=int)
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
-    parser.add_argument("--max_gaussian_blur", default=2.4, type=float)
+    parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
     parser.add_argument("--min_gaussian_noise", default=0.0, type=float)
     parser.add_argument("--max_gaussian_noise", default=0.1, type=float)
     parser.add_argument("--min_compression", default=0.0, type=float)
@@ -201,8 +201,13 @@ def main():
     bce_loss = RelativisticBCELoss()
     combined_loss = BalancedMultitaskLoss()
 
-    upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
-    critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate)
+    upscaler_optimizer = AdamW(
+        upscaler.parameters(), lr=args.upscaler_learning_rate, weight_decay=1e-4
+    )
+
+    critic_optimizer = AdamW(
+        critic.parameters(), lr=args.critic_learning_rate, weight_decay=1e-5
+    )
 
     starting_epoch = 1
 

@@ -49,7 +49,7 @@ def main():
     )
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
-    parser.add_argument("--max_gaussian_blur", default=2.4, type=float)
+    parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
     parser.add_argument("--min_gaussian_noise", default=0.0, type=float)
     parser.add_argument("--max_gaussian_noise", default=0.1, type=float)
     parser.add_argument("--min_compression", default=0.0, type=float)
@@ -61,7 +61,7 @@ def main():
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
     parser.add_argument("--num_epochs", default=100, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=3e-4, type=float)
+    parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
     parser.add_argument("--primary_layers", default=4, type=int)
@@ -182,7 +182,7 @@ def main():
         "quaternary_channels": args.quaternary_channels,
         "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
-        "num_deg_features": 3,
+        "num_deg_features": training.num_degradations,
     }
 
     upscaler = MewZoom(**upscaler_args)

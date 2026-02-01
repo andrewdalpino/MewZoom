@@ -2,13 +2,13 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A fast single image super-resolution (SISR) model for upscaling images with *purrfect* quality. MewZoom uses a two-stage "zoom in and enhance" mechanism that utilizes a fast deterministic upscaling algorithm to upscale the image and then enhances it through a steerable residual pathway that operates primarily in the low-resolution subspace of a deep neural network.
+A family of image super-resolution models with cat-like vision and clarity. Looking for the *purrfect* pixels? MewZoom pounces on blurry, low-resolution images and transforms them into crystal-clear high-resolution masterpieces using the power of a deep neural network. Trained on a diverse set of images and fine-tuned with an adversarial network for increased realism, MewZoom brings out every detail in your fuzzy images.
 
 ## Key Features
 
-- **Fast and scalable**: MewZoom uses a unique "zoom in and enhance" mechanism that combines the speed of deterministic bicubic interpolation with the power of a deep neural network.
+- **Fast and scalable**: MewZoom incorporates parameter-efficiency into the architecture requiring less parameters than models with similar performance.
 
-- **Controllable enhancements**: MewZoom integrates channel-wise control modules directly into the architecture, allowing you to finely adjust the amount of denoising, deblurring, and deartifacting to suite your image source.
+- **Ultra clarity**: In addition to upscaling, MewZoom is trained to predict and remove various forms of degradation including blur, noise, and compression artifacts.
 
 - **Full RGB**: Unlike many efficient SR models that only operate in the luminance domain, MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
 
@@ -289,21 +289,20 @@ Then navigate to the dashboard using your favorite web browser.
 | --target_resolution | 256 | int | The number of pixels in the height and width dimensions of the training images. |
 | --upscale_ratio | 2 | (2, 4, 8) | The upscaling or zoom factor. |
 | --min_gaussian_blur | 0.0 | float | The minimum amount of Gaussian blur to apply to the degraded low-resolution image. |
-| --max_gaussian_blur | 1.0 | float | The maximum amount of Gaussian blur to apply to the degraded low-resolution image. |
+| --max_gaussian_blur | 2.0 | float | The maximum amount of Gaussian blur to apply to the degraded low-resolution image. |
 | --min_gaussian_noise | 0.0 | float | The minimum amount of Gaussian noise to add to the degraded low-resolution image. |
 | --max_gaussian_noise | 0.1 | float | The maximum amount of Gaussian noise to add to the degraded low-resolution image. |
 | --min_compression | 0.0 | float | The minimum amount of JPEG compression to apply to the degraded low-resolution image. |
-| --max_compression | 0.8 | float | The maximum amount of JPEG compression to apply to the degraded low-resolution image. |
-| --brightness_jitter | 0.1 | float | The amount of jitter applied to the brightness of the training images. |
-| --contrast_jitter | 0.1 | float | The amount of jitter applied to the contrast of the training images. |
-| --saturation_jitter | 0.1 | float | The amount of jitter applied to the saturation of the training images. |
-| --hue_jitter | 0.1 | float | The amount of jitter applied to the hue of the training images. |
+| --max_compression | 0.7 | float | The maximum amount of JPEG compression to apply to the degraded low-resolution image. |
+| --brightness_jitter | 0.2 | float | The amount of jitter applied to the brightness of the training images. |
+| --contrast_jitter | 0.15 | float | The amount of jitter applied to the contrast of the training images. |
+| --saturation_jitter | 0.2 | float | The amount of jitter applied to the saturation of the training images. |
+| --hue_jitter | 0.03 | float | The amount of jitter applied to the hue of the training images. |
 | --batch_size | 32 | int | The number of training images to pass through the network at a time. |
 | --gradient_accumulation_steps | 4 | int | The number of batches to pass through the network before updating the model weights. |
 | --num_epochs | 100 | int | The number of epochs to train for. |
-| --upscaler_learning_rate | 3e-4 | float | The learning rate of the AdamW optimizer. |
-| --adaptive_loss_learning_rate | 1e-3 | float | The learning rate of the loss combiner weights. |
-| --max_gradient_norm | 2.0 | float | Clip gradients above this threshold norm before stepping. |
+| --upscaler_learning_rate | 2e-4 | float | The learning rate of the AdamW optimizer. |
+| --max_gradient_norm | 1.0 | float | Clip gradients above this threshold norm before stepping. |
 | --num_primary_channels | 48 | int | The number of primary channels within each encoder/decoder block. |
 | --num_primary_layers | 4 | int | The number of primary layers in the encoder/decoder. |
 | --num_secondary_channels | 96 | int | The number of secondary channels within each encoder/decoder block. |
@@ -346,15 +345,15 @@ python fine-tune.py --base_checkpoint_path="./checkpoints/2X-100.pt" --critic_mo
 | --num_dataset_processes | 8 | int | The number of CPU processes to use to preprocess the dataset. |
 | --target_resolution | 512 | int | The number of pixels in the height and width dimensions of the training images. |
 | --min_gaussian_blur | 0.0 | float | The minimum amount of Gaussian blur to apply to the degraded low-resolution image. |
-| --max_gaussian_blur | 1.0 | float | The maximum amount of Gaussian blur to apply to the degraded low-resolution image. |
+| --max_gaussian_blur | 2.0 | float | The maximum amount of Gaussian blur to apply to the degraded low-resolution image. |
 | --min_gaussian_noise | 0.0 | float | The minimum amount of Gaussian noise to add to the degraded low-resolution image. |
 | --max_gaussian_noise | 0.1 | float | The maximum amount of Gaussian noise to add to the degraded low-resolution image. |
 | --min_compression | 0.0 | float | The minimum amount of JPEG compression to apply to the degraded low-resolution image. |
-| --max_compression | 0.8 | float | The maximum amount of JPEG compression to apply to the degraded low-resolution image. |
-| --brightness_jitter | 0.1 | float | The amount of jitter applied to the brightness of the training images. |
-| --contrast_jitter | 0.1 | float | The amount of jitter applied to the contrast of the training images. |
-| --saturation_jitter | 0.1 | float | The amount of jitter applied to the saturation of the training images. |
-| --hue_jitter | 0.1 | float | The amount of jitter applied to the hue of the training images. |
+| --max_compression | 0.7 | float | The maximum amount of JPEG compression to apply to the degraded low-resolution image. |
+| --brightness_jitter | 0.2 | float | The amount of jitter applied to the brightness of the training images. |
+| --contrast_jitter | 0.15 | float | The amount of jitter applied to the contrast of the training images. |
+| --saturation_jitter | 0.2 | float | The amount of jitter applied to the saturation of the training images. |
+| --hue_jitter | 0.03 | float | The amount of jitter applied to the hue of the training images. |
 | --batch_size | 8 | int | The number of training images to pass through the network at a time. |
 | --gradient_accumulation_steps | 16 | int | The number of batches to pass through the network before updating the model weights. |
 | --upscaler_learning_rate | 1e-4 | float | The learning rate of the AdamW optimizer. |
@@ -362,9 +361,8 @@ python fine-tune.py --base_checkpoint_path="./checkpoints/2X-100.pt" --critic_mo
 | --critic_learning_rate | 5e-4 | float | The learning rate of the AdamW optimizer. |
 | --critic_max_gradient_norm | 5.0 | float | Clip gradients above this threshold norm before stepping. |
 | --num_epochs | 100 | int | The number of epochs to train for. |
-| --critic_warmup_epochs | 1 | int | Train the critic model for this many epochs before using it to train the upscaler. |
+| --critic_warmup_epochs | 2 | int | Train the critic model for this many epochs before using it to train the upscaler. |
 | --critic_model_size | "small" | str | The size of the critic model. Choice of small, medium, and large. |
-| --adaptive_loss_learning_rate | 1e-3 | float | The learning rate of the adaptive loss combiner. |
 | --activation_checkpointing | False | bool | Should we use activation checkpointing? This will drastically reduce memory utilization during training at the cost of recomputing the forward pass. |
 | --eval_interval | 2 | int | Evaluate the model after this many epochs on the testing set. |
 | --checkpoint_interval | 2 | int | Save the model checkpoint to disk every this many epochs. |
@@ -388,21 +386,12 @@ To generate images using a different checkpoint you can use the `checkpoint_path
 python test-compare.py --checkpoint_path="./checkpoints/fine-tuned.pt" --image_path="./example.jpg"
 ```
 
-You can adjust the level of enhancements applied to the image by setting the `gaussian_blur`, `gaussian_noise`, and `jpeg_compression` arguments like in the example below. Each value has been normalized such that 0 means no enhancement and 1 means full enhancement.
-
-```sh
-python test-compare.py --guassian_blur=0.5 --gaussian_noise=0.7 --jpeg_compression=0.9 --image_path="./example.jpg" 
-```
-
 #### Test compare Arguments
 
 | Argument | Default | Type | Description |
 | --- | --- | --- | --- |
 | --image_path | None | str | The path to the image file to be upscaled by the model. |
 | --checkpoint_path | "./checkpoints/fine-tuned.pt" | str | The path to the base checkpoint file on disk. |
-| --gaussian_blur | 0.5 | float | The strength of gaussian blur removal from the image, between 0 and 1. |
-| --gaussian_noise | 0.5 | float | The strength of gaussian noise removal from the image, between 0 and 1. |
-| --jpeg_compression | 0.5 | float | The strength of JPEG compression artifact removal from the image, between 0 and 1. |
 | --device | "cpu" | str | The device to run the computation on. |
 
 ## References

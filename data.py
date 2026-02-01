@@ -131,6 +131,10 @@ class ImageFolder(Dataset):
 
         return extension in cls.ALLOWED_EXTENSIONS
 
+    @property
+    def num_degradations(self) -> int:
+        return 3
+
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
         image_path = self.image_paths[index]
 

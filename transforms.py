@@ -23,7 +23,7 @@ class GaussianBlur(Transform):
         assert min_sigma >= 0, f"Min sigma must be non-negative, {min_sigma} given."
         assert max_sigma >= 0, f"Max sigma must be non-negative, {max_sigma} given."
 
-        assert max_sigma >= min_sigma, f"Max sigma must be greater than min sigma."
+        assert max_sigma >= min_sigma, "Max sigma must be greater than min sigma."
 
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
@@ -60,7 +60,7 @@ class GaussianNoise(Transform):
         assert min_sigma >= 0, f"Min sigma must be non-negative, {min_sigma} given."
         assert max_sigma >= 0, f"Max sigma must be non-negative, {max_sigma} given."
 
-        assert max_sigma >= min_sigma, f"Max sigma must be greater than min sigma."
+        assert max_sigma >= min_sigma, "Max sigma must be greater than min sigma."
 
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
@@ -83,11 +83,11 @@ class JPEGCompression(Transform):
     A transform that applies JPEG compression to an image.
     """
 
-    def __init__(self, min_compression: int, max_compression: int):
+    def __init__(self, min_compression: float, max_compression: float):
         """
         Args:
-            min_compression (int): Minimum quality of the JPEG compression.
-            max_compression (int): Maximum quality of the JPEG compression.
+            min_compression (float): Minimum quality of the JPEG compression.
+            max_compression (float): Maximum quality of the JPEG compression.
         """
 
         super().__init__()
@@ -102,7 +102,7 @@ class JPEGCompression(Transform):
 
         assert (
             max_compression >= min_compression
-        ), f"Max compression must be greater than min compression."
+        ), "Max compression must be greater than min compression."
 
         self.min_compression = min_compression
         self.max_compression = max_compression

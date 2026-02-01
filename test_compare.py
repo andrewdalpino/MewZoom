@@ -36,6 +36,7 @@ def main():
     model.add_weight_norms()
 
     state_dict = checkpoint["upscaler"]
+
     # Compensate for compiled state dict.
     for key in list(state_dict.keys()):
         state_dict[key.replace("_orig_mod.", "")] = state_dict.pop(key)

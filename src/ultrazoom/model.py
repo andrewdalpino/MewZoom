@@ -354,8 +354,8 @@ class Encoder(Module):
         ), "Number of quaternary layers must be greater than 0."
 
         assert (
-            qa_num_features > 0
-        ), "Number of quality assessor features must be greater than 0."
+            num_deg_features > 0
+        ), "Number of degradation features must be greater than 0."
 
         self.stage1 = ModuleList(
             [

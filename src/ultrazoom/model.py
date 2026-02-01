@@ -42,7 +42,7 @@ type FeatureMapSize = tuple[int, int] | list[int]
 
 class MewZoom(Module, PyTorchModelHubMixin):
     """
-    A model for image super-resolution based on a U-Net with adaptive residual
+    A model for image super-resolution based on a Super U-Net with adaptive residual
     connections.
     """
 

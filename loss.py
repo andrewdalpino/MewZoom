@@ -79,6 +79,114 @@ class RelativisticBCELoss(Module):
         return loss
 
 
+class WassersteinLoss(Module):
+    """
+    Wasserstein loss with gradient penalty for generative adversarial network training.
+    """
+
+    def __init__(self, penalty_lambda: float = 10.0):
+        super().__init__()
+
+        assert penalty_lambda > 0.0, "Penalty lambda must be positive."
+
+        self.penalty_lambda = penalty_lambda
+
+    def compute_gradient_penalty(
+        self, critic: Module, y_orig: Tensor, u_pred_sr: Tensor
+    ) -> Tensor:
+        """
+        Compute gradient penalty for Lipschitz constraint enforcement.
+
+        Args:
+            critic: The critic network.
+            y_orig: Original high-resolution images.
+            u_pred_sr: Super-resolved images from the upscaler.
+
+        Returns:
+            Gradient penalty tensor.
+        """
+
+        batch_size = y_orig.size(0)
+
+        device = y_orig.device
+
+        # Random interpolation
+        alpha = torch.rand(batch_size, 1, 1, 1, device=device)
+
+        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr
+
+        interpolated.requires_grad_(True)
+
+        _, _, _, _, d_interpolated = critic.forward(interpolated)
+
+        gradients = torch.autograd.grad(
+            outputs=d_interpolated,
+            inputs=interpolated,
+            grad_outputs=torch.ones_like(d_interpolated),
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+
+        penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+
+        return self.penalty_lambda * penalty
+
+    def critic_loss(
+        self,
+        critic: Module,
+        y_pred_real: Tensor,
+        y_pred_fake: Tensor,
+        y_orig: Tensor,
+        u_pred_sr: Tensor,
+    ) -> Tensor:
+        """
+        Compute critic loss: maximize E[D(real)] - E[D(fake)] + gradient penalty.
+
+        Args:
+            critic: The critic network.
+            y_pred_real: Critic output for real images.
+            y_pred_fake: Critic output for fake images.
+            y_orig: Original high-resolution images.
+            u_pred_sr: Super-resolved images from the upscaler.
+
+        Returns:
+            Combined Wasserstein loss with gradient penalty.
+        """
+
+        assert (
+            y_pred_real.shape == y_pred_fake.shape
+        ), "Real and fake predictions must have the same shape"
+
+        assert (
+            y_orig.shape == u_pred_sr.shape
+        ), "Original and super-resolved images must have same shape"
+
+        wasserstein_loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
+
+        # Gradient penalty
+        gradient_penalty = self.compute_gradient_penalty(
+            critic,
+            y_orig,
+            u_pred_sr,
+        )
+
+        return wasserstein_loss + gradient_penalty
+
+    def generator_loss(self, y_pred_fake: Tensor) -> Tensor:
+        """
+        Compute generator loss: minimize -E[D(fake)].
+
+        Args:
+            y_pred_fake: Critic output for fake images.
+
+        Returns:
+            Generator adversarial loss.
+        """
+
+        return -torch.mean(y_pred_fake)
+
+
 class DegredationAwareFocalLossWeighting(Module):
     """
     A loss weighting that focuses the loss on samples that are harder to upscale due to having

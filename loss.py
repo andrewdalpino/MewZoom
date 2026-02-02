@@ -79,6 +79,25 @@ class RelativisticBCELoss(Module):
         return loss
 
 
+class DegredationAwareFocalLossWeighting(Module):
+    """
+    A loss weighting that focuses the loss on samples that are harder to upscale due to having
+    higher amounts of degradation present in the input.
+    """
+
+    def __init__(self, gamma: float):
+        super().__init__()
+
+        self.gamma = gamma
+
+    def forward(self, y_qa: Tensor) -> Tensor:
+        qa_norms = y_qa.norm(dim=1, keepdim=True)
+
+        weights = (1 + qa_norms) ** self.gamma
+
+        return weights
+
+
 class BalancedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 

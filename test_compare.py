@@ -33,6 +33,7 @@ def main():
 
     model = MewZoom(**checkpoint["upscaler_args"])
 
+    model.add_qa_head(checkpoint["degradation_features"])
     model.add_weight_norms()
 
     state_dict = checkpoint["upscaler"]

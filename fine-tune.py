@@ -173,6 +173,7 @@ def main():
 
     upscaler = MewZoom(**upscaler_args)
 
+    upscaler.add_qa_head(training.num_degradations)
     upscaler.add_weight_norms()
 
     state_dict = checkpoint["upscaler"]
@@ -425,6 +426,7 @@ def main():
                 "critic_args": critic_args,
                 "critic": critic.state_dict(),
                 "critic_optimizer": critic_optimizer.state_dict(),
+                "degradation_features": training.num_degradations,
             }
 
             torch.save(checkpoint, args.checkpoint_path)

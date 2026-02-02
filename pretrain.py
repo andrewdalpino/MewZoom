@@ -182,11 +182,11 @@ def main():
         "quaternary_channels": args.quaternary_channels,
         "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
-        "num_deg_features": training.num_degradations,
     }
 
     upscaler = MewZoom(**upscaler_args)
 
+    upscaler.add_qa_head(training.num_degradations)
     upscaler.add_weight_norms()
 
     upscaler = torch.compile(upscaler)
@@ -337,6 +337,7 @@ def main():
                 "upscaler_args": upscaler_args,
                 "upscaler": upscaler.state_dict(),
                 "upscaler_optimizer": upscaler_optimizer.state_dict(),
+                "degradation_features": training.num_degradations,
             }
 
             torch.save(checkpoint, args.checkpoint_path)

@@ -2,8 +2,9 @@
 
 ## 0.3.0
 
+- Change name to MewZoom.
 - Now uses a residual encoder-decoder (Unet) architecture.
-- Change name to MewZoom
+- Added adaptive residual mix module.
 
 ## 0.2.1
 

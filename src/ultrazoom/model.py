@@ -18,6 +18,7 @@ from torch.nn import (
     Sigmoid,
     PixelShuffle,
     AdaptiveAvgPool2d,
+    Identity,
     Flatten,
     Parameter,
 )
@@ -60,7 +61,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        num_deg_features: int,
     ):
         super().__init__()
 
@@ -82,7 +82,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
-            num_deg_features,
         )
 
         self.head = SuperResolver(primary_channels, hidden_ratio, upscale_ratio)
@@ -113,6 +112,16 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         for param in self.parameters():
             param.requires_grad = False
+
+    def add_qa_head(self, num_features: int) -> None:
+        """Add a quality assessment head to predict degradation features."""
+
+        self.unet.add_qa_head(num_features)
+
+    def remove_qa_head(self) -> None:
+        """Remove the quality assessment head."""
+
+        self.unet.remove_qa_head()
 
     def add_weight_norms(self) -> None:
         """Add weight normalization parameterization to the network."""
@@ -258,7 +267,6 @@ class UNet(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        num_deg_features: int,
     ):
         super().__init__()
 
@@ -284,7 +292,6 @@ class UNet(Module):
             quaternary_channels,
             ceil(quaternary_layers / 2),
             hidden_ratio,
-            num_deg_features,
         )
 
         self.decoder = Decoder(
@@ -302,6 +309,12 @@ class UNet(Module):
     def initialize_weights(self) -> None:
         self.encoder.initialize_weights()
         self.decoder.initialize_weights()
+
+    def add_qa_head(self, num_features: int) -> None:
+        self.encoder.add_qa_head(num_features)
+
+    def remove_qa_head(self) -> None:
+        self.encoder.remove_qa_head()
 
     def add_weight_norms(self) -> None:
         self.encoder.add_weight_norms()
@@ -337,7 +350,6 @@ class Encoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        num_deg_features: int,
     ):
         super().__init__()
 
@@ -352,10 +364,6 @@ class Encoder(Module):
         assert (
             quaternary_layers > 0
         ), "Number of quaternary layers must be greater than 0."
-
-        assert (
-            num_deg_features > 0
-        ), "Number of degradation features must be greater than 0."
 
         self.stage1 = ModuleList(
             [
@@ -389,9 +397,11 @@ class Encoder(Module):
         self.downsample2 = PixelCrush(secondary_channels, tertiary_channels, 2)
         self.downsample3 = PixelCrush(tertiary_channels, quaternary_channels, 2)
 
-        self.qa_head = QualityAssessor(quaternary_channels, num_deg_features)
+        self.qa_head = Identity()
 
         self.checkpoint = lambda layer, x: layer.forward(x)
+
+        self.quaternary_channels = quaternary_channels
 
     def initialize_weights(self) -> None:
         for layer in self.stage1:
@@ -410,7 +420,11 @@ class Encoder(Module):
         self.downsample2.initialize_weights()
         self.downsample3.initialize_weights()
 
-        self.qa_head.initalize_weights()
+    def add_qa_head(self, num_features: int) -> None:
+        self.qa_head = QualityAssessor(self.quaternary_channels, num_features)
+
+    def remove_qa_head(self) -> None:
+        self.qa_head = Identity()
 
     def add_weight_norms(self) -> None:
         for layer in self.stage1:
@@ -1006,6 +1020,10 @@ class QualityAssessor(Module):
 
     def __init__(self, num_channels: int, num_features: int):
         super().__init__()
+
+        assert (
+            num_features > 0
+        ), "Number of degradation features must be greater than 0."
 
         self.conv = Conv2d(num_channels, num_features, kernel_size=3, padding=1)
 

@@ -62,7 +62,7 @@ def main():
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
     parser.add_argument("--num_epochs", default=200, type=int)
     parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
-    parser.add_argument("--max_gradient_norm", default=1.0, type=float)
+    parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
     parser.add_argument("--primary_layers", default=4, type=int)
     parser.add_argument("--secondary_channels", default=96, type=int)

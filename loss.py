@@ -123,8 +123,8 @@ class WassersteinLoss(Module):
             outputs=d_interpolated,
             inputs=interpolated,
             grad_outputs=torch.ones_like(d_interpolated),
-            create_graph=True,
-            retain_graph=True,
+            create_graph=False,
+            retain_graph=False,
             only_inputs=True,
         )[0]
 

@@ -360,6 +360,7 @@ python fine-tune.py --base_checkpoint_path="./checkpoints/2X-100.pt" --critic_mo
 | --upscaler_max_gradient_norm | 1.0 | float | Clip gradients above this threshold norm before stepping. |
 | --critic_learning_rate | 5e-4 | float | The learning rate of the AdamW optimizer. |
 | --critic_max_gradient_norm | 5.0 | float | Clip gradients above this threshold norm before stepping. |
+| --critic_step_ratio | 5 | int | The number of critic updates for every 1 upscaler update. |
 | --num_epochs | 100 | int | The number of epochs to train for. |
 | --critic_warmup_epochs | 2 | int | Train the critic model for this many epochs before using it to train the upscaler. |
 | --critic_model_size | "small" | str | The size of the critic model. Choice of small, medium, and large. |

@@ -109,7 +109,7 @@ class WassersteinLoss(Module):
         # Random interpolation
         alpha = torch.rand(y_orig.size(0), 1, 1, 1, device=y_orig.device)
 
-        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr
+        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr.detach()
 
         interpolated.requires_grad_(True)
 

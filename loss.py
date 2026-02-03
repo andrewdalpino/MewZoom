@@ -119,9 +119,11 @@ class WassersteinLoss(Module):
             outputs=d_interpolated,
             inputs=interpolated,
             grad_outputs=torch.ones_like(d_interpolated),
+            create_graph=True,
+            retain_graph=True,
         )
 
-        penalty = ((gradients.norm(dim=1) - 1) ** 2).mean()
+        penalty = ((gradients[0].norm(dim=1) - 1) ** 2).mean()
 
         return self.penalty_lambda * penalty
 

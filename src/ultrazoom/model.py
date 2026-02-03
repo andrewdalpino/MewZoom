@@ -420,6 +420,9 @@ class Encoder(Module):
         self.downsample2.initialize_weights()
         self.downsample3.initialize_weights()
 
+        if isinstance(self.qa_head, QualityAssessor):
+            self.qa_head.initialize_weights()
+
     def add_qa_head(self, num_features: int) -> None:
         self.qa_head = QualityAssessor(self.quaternary_channels, num_features)
 
@@ -443,7 +446,8 @@ class Encoder(Module):
         self.downsample2.add_weight_norms()
         self.downsample3.add_weight_norms()
 
-        self.qa_head.add_weight_norms()
+        if isinstance(self.qa_head, QualityAssessor):
+            self.qa_head.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         for layer in self.stage1:
@@ -462,7 +466,8 @@ class Encoder(Module):
         self.downsample2.add_lora_adapters(rank, alpha)
         self.downsample3.add_lora_adapters(rank, alpha)
 
-        self.qa_head.add_lora_adapters(rank, alpha)
+        if isinstance(self.qa_head, QualityAssessor):
+            self.qa_head.add_lora_adapters(rank, alpha)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -1030,6 +1035,9 @@ class QualityAssessor(Module):
         self.pool = AdaptiveAvgPool2d(1)
 
         self.flatten = Flatten(start_dim=1)
+
+    def initialize_weights(self) -> None:
+        kaiming_uniform_(self.conv.weight)
 
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)

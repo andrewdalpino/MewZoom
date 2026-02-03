@@ -59,8 +59,9 @@ def main():
     parser.add_argument("--gradient_accumulation_steps", default=8, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
-    parser.add_argument("--critic_max_gradient_norm", default=5.0, type=float)
+    parser.add_argument("--critic_learning_rate", default=2e-4, type=float)
+    parser.add_argument("--critic_max_gradient_norm", default=2.0, type=float)
+    parser.add_argument("--critic_step_ratio", default=2, type=int)
     parser.add_argument("--num_epochs", default=100, type=int)
     parser.add_argument("--critic_warmup_epochs", default=2, type=int)
     parser.add_argument(
@@ -291,7 +292,7 @@ def main():
 
             total_c_bce += c_bce.item()
 
-            if not is_warmup:
+            if not is_warmup and step % args.critic_step_ratio == 0:
                 with amp_context:
                     pixel_l2 = l2_loss.forward(u_pred_sr, y_orig)
 

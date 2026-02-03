@@ -57,14 +57,15 @@ class TestMewZoom(BaseModelTest):
             quaternary_channels=256,
             quaternary_layers=2,
             hidden_ratio=self.hidden_ratio,
-            degradation_features=self.degradation_features,
         )
+
+        self.model.add_qa_head(self.degradation_features)
 
     def test_initialization(self):
         self.assertEqual(self.model.upscale_ratio, self.upscale_ratio)
         self.assertIsInstance(self.model.stem, FanOutProjection)
         self.assertIsInstance(self.model.unet, UNet)
-        self.assertIsInstance(self.model.sr_head, SuperResolver)
+        self.assertIsInstance(self.model.head, SuperResolver)
 
     def test_invalid_upscale_ratio(self):
         with self.assertRaises(AssertionError):
@@ -79,7 +80,6 @@ class TestMewZoom(BaseModelTest):
                 quaternary_channels=256,
                 quaternary_layers=2,
                 hidden_ratio=self.hidden_ratio,
-                degradation_features=16,
             )
 
     def test_forward(self):
@@ -93,14 +93,6 @@ class TestMewZoom(BaseModelTest):
         expected_qa_shape = (self.batch_size, self.degradation_features)
         self.assertEqual(output_sr.shape, expected_sr_shape)
         self.assertEqual(output_qa.shape, expected_qa_shape)
-
-    def test_forward_with_mismatched_batch_size(self):
-        # This test is no longer applicable since the model only takes one input tensor
-        pass
-
-    def test_forward_with_wrong_control_features(self):
-        # This test is no longer applicable since the model doesn't take control features
-        pass
 
     def test_num_params(self):
         count = sum(param.numel() for param in self.model.parameters())
@@ -185,7 +177,6 @@ class TestONNXModel(BaseModelTest):
             quaternary_channels=256,
             quaternary_layers=2,
             hidden_ratio=self.hidden_ratio,
-            degradation_features=16,
         )
         self.onnx_model = ONNXModel(self.ultrazoom)
 
@@ -216,7 +207,6 @@ class TestUNet(BaseModelTest):
             quaternary_channels=256,
             quaternary_layers=2,
             hidden_ratio=self.hidden_ratio,
-            degradation_features=16,
         )
 
     def test_initialization(self):
@@ -235,7 +225,6 @@ class TestUNet(BaseModelTest):
                 quaternary_channels=256,
                 quaternary_layers=2,
                 hidden_ratio=self.hidden_ratio,
-                degradation_features=16,
             )
 
     def test_forward(self):
@@ -245,7 +234,6 @@ class TestUNet(BaseModelTest):
         self.assertEqual(
             output[0].shape, (self.batch_size, 32, self.height, self.width)
         )
-        self.assertEqual(output[1].shape, (self.batch_size, 16))
 
     def test_activation_checkpointing(self):
         self.unet.enable_activation_checkpointing()
@@ -255,7 +243,6 @@ class TestUNet(BaseModelTest):
         self.assertEqual(
             output[0].shape, (self.batch_size, 32, self.height, self.width)
         )
-        self.assertEqual(output[1].shape, (self.batch_size, 16))
 
 
 class TestEncoder(BaseModelTest):
@@ -296,7 +283,7 @@ class TestEncoder(BaseModelTest):
 
     def test_forward(self):
         input_features = torch.rand(self.batch_size, 32, self.height, self.width)
-        z1, z2, z3, z4 = self.encoder(input_features)
+        z1, z2, z3, z4, _ = self.encoder(input_features)
         self.assertEqual(z1.shape, (self.batch_size, 32, self.height, self.width))
         self.assertEqual(
             z2.shape, (self.batch_size, 64, self.height // 2, self.width // 2)
@@ -314,7 +301,7 @@ class TestEncoder(BaseModelTest):
         self.assertNotEqual(original_checkpoint, self.encoder.checkpoint)
 
         input_features = torch.rand(self.batch_size, 32, self.height, self.width)
-        z1, z2, z3, z4 = self.encoder(input_features)
+        z1, z2, z3, z4, _ = self.encoder(input_features)
         self.assertEqual(z1.shape[0], self.batch_size)
 
 
@@ -329,7 +316,7 @@ class TestEncoderBlock(BaseModelTest):
         )
 
     def test_initialization(self):
-        self.assertIsInstance(self.encoder_block.stage1, InvertedBottleneck)
+        self.assertIsInstance(self.encoder_block.convnet, InvertedBottleneck)
 
     def test_forward(self):
         output = self.encoder_block(self.block_input)
@@ -498,10 +485,10 @@ class TestSuperResolver(BaseModelTest):
             SuperResolver(self.num_channels, self.hidden_ratio, 5)
 
     def test_forward(self):
-        # Create x (original input image) and z (processed features)
+        # Create x (original image) and z (processed features)
         x = torch.rand(self.batch_size, 3, self.height, self.width)  # Original image
         z = self.head_input  # Processed features from UNet
-        output = self.head(x, z)
+        output = self.head(z)
         expected_shape = (
             self.batch_size,
             3,
@@ -817,8 +804,8 @@ class TestAdaptiveResidualMix(BaseModelTest):
         """Test that the module initializes correctly."""
         self.assertIsInstance(self.module.conv, torch.nn.Conv2d)
         self.assertEqual(self.module.conv.in_channels, 2 * self.num_channels)
-        self.assertEqual(self.module.conv.out_channels, 1)
-        self.assertEqual(self.module.conv.kernel_size, (3, 3))
+        self.assertEqual(self.module.conv.out_channels, 32)
+        self.assertEqual(self.module.conv.kernel_size, (1, 1))
         self.assertIsInstance(self.module.alpha, torch.nn.Parameter)
         self.assertIsInstance(self.module.sigmoid, torch.nn.Sigmoid)
 
@@ -830,17 +817,7 @@ class TestAdaptiveResidualMix(BaseModelTest):
     def test_forward_output_values(self):
         """Test that forward pass produces values in reasonable range."""
         output = self.module.forward(self.x, self.z)
-        # Output should be a weighted combination of inputs, not necessarily bounded [0,1]
         self.assertIsNotNone(output)
-
-    def test_parameter_count(self):
-        """Test that parameter count matches expectation."""
-        # For AdaptiveResidualMix with C channels:
-        # conv: Conv2d(2*C, 1, 3x3): 2*C*1*3*3 + 1 bias = 18*C + 1 parameters
-        # Plus 1 for the alpha parameter = 18*C + 2 parameters
-        expected_params = 18 * self.num_channels + 2
-        actual_params = sum(p.numel() for p in self.module.parameters())
-        self.assertEqual(actual_params, expected_params)
 
     def test_weight_norms(self):
         """Test that weight norms can be added successfully."""

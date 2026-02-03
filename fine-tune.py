@@ -260,9 +260,6 @@ def main():
             y_orig = y_orig.to(args.device, non_blocking=True)
             y_deg = y_deg.to(args.device, non_blocking=True)
 
-            y_real = torch.full((y_orig.size(0), 1), 1.0).to(args.device)
-            y_fake = torch.full((y_orig.size(0), 1), 0.0).to(args.device)
-
             update_this_step = step % args.gradient_accumulation_steps == 0
 
             with amp_context:
@@ -271,7 +268,7 @@ def main():
                 _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
                 _, _, _, _, c_pred_real = critic.forward(y_orig)
 
-                c_bce = bce_loss.forward(c_pred_real, c_pred_fake, y_real, y_fake)
+                c_bce = bce_loss.forward(c_pred_fake, c_pred_real)
 
                 scaled_c_loss = c_bce / args.gradient_accumulation_steps
 
@@ -304,7 +301,7 @@ def main():
                     stage_2_l2 = l2_loss.forward(z2_fake, z2_real)
                     stage_3_l2 = l2_loss.forward(z3_fake, z3_real)
 
-                    u_bce = bce_loss.forward(c_pred_real, c_pred_fake, y_fake, y_real)
+                    u_bce = bce_loss.forward(c_pred_fake, c_pred_real)
 
                     u_loss = combined_loss.forward(
                         torch.stack(
@@ -374,9 +371,6 @@ def main():
                 x = x.to(args.device, non_blocking=True)
                 y_orig = y_orig.to(args.device, non_blocking=True)
 
-                y_real = torch.full((y_orig.size(0), 1), 1.0).to(args.device)
-                y_fake = torch.full((y_orig.size(0), 1), 0.0).to(args.device)
-
                 u_pred_sr = upscaler.upscale(x)
 
                 c_pred_fake = critic.predict(u_pred_sr)
@@ -386,7 +380,7 @@ def main():
                 ssim_metric.update(u_pred_sr, y_orig)
                 vif_metric.update(u_pred_sr, y_orig)
 
-                f1_metric.update(c_pred_real, c_pred_fake, y_real, y_fake)
+                f1_metric.update(c_pred_fake, c_pred_real)
 
             psnr = psnr_metric.compute()
             ssim = ssim_metric.compute()

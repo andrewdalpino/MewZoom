@@ -17,18 +17,18 @@ class RelativisticF1Score(Module):
 
         self.recall_metric = BinaryRecall()
 
-    def update(
-        self,
-        y_pred_real: Tensor,
-        y_pred_fake: Tensor,
-        y_real: Tensor,
-        y_fake: Tensor,
-    ) -> None:
-        y_pred_real -= y_pred_fake.mean()
-        y_pred_fake -= y_pred_real.mean()
+    def update(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> None:
+        y_fake = torch.full((y_pred_fake.size(0), 1), 0.0)
+        y_real = torch.full((y_pred_real.size(0), 1), 1.0)
 
-        y_pred = torch.cat((y_pred_real, y_pred_fake), dim=0)
-        labels = torch.cat((y_real, y_fake), dim=0)
+        y_fake = y_fake.to(y_pred_fake.device)
+        y_real = y_real.to(y_pred_real.device)
+
+        y_pred_fake -= y_pred_real.mean()
+        y_pred_real -= y_pred_fake.mean()
+
+        y_pred = torch.cat((y_pred_fake, y_pred_real), dim=0)
+        labels = torch.cat((y_fake, y_real), dim=0)
 
         self.precision_metric.update(y_pred, labels)
         self.recall_metric.update(y_pred, labels)

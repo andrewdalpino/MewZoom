@@ -63,18 +63,18 @@ class RelativisticBCELoss(Module):
 
         self.bce = BCEWithLogitsLoss()
 
-    def forward(
-        self,
-        y_pred_real: Tensor,
-        y_pred_fake: Tensor,
-        y_real: Tensor,
-        y_fake: Tensor,
-    ) -> Tensor:
-        y_pred_real_hat = y_pred_real - y_pred_fake.mean()
-        y_pred_fake_hat = y_pred_fake - y_pred_real.mean()
+    def forward(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
+        y_fake = torch.full((y_pred_fake.size(0), 1), 0.0)
+        y_real = torch.full((y_pred_real.size(0), 1), 1.0)
 
-        y_pred = torch.cat((y_pred_real_hat, y_pred_fake_hat))
-        y = torch.cat((y_real, y_fake))
+        y_fake = y_fake.to(y_pred_fake.device)
+        y_real = y_real.to(y_pred_real.device)
+
+        y_pred_fake -= y_pred_real.mean()
+        y_pred_real -= y_pred_fake.mean()
+
+        y_pred = torch.cat((y_pred_fake, y_pred_real))
+        y = torch.cat((y_fake, y_real))
 
         loss = self.bce.forward(y_pred, y)
 
@@ -94,7 +94,7 @@ class WassersteinLoss(Module):
         self.critic = critic
         self.penalty_lambda = penalty_lambda
 
-    def compute_gradient_penalty(self, y_orig: Tensor, u_pred_sr: Tensor) -> Tensor:
+    def compute_gradient_penalty(self, u_pred_sr: Tensor, y_orig: Tensor) -> Tensor:
         """
         Compute gradient penalty for Lipschitz constraint enforcement.
 
@@ -106,7 +106,11 @@ class WassersteinLoss(Module):
             Gradient penalty tensor.
         """
 
-        # Random interpolation
+        assert (
+            u_pred_sr.shape == y_orig.shape
+        ), "Input tensors must have the same shape."
+
+        # Uniform random interpolation.
         alpha = torch.rand(y_orig.size(0), 1, 1, 1, device=y_orig.device)
 
         interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr.detach()
@@ -129,10 +133,10 @@ class WassersteinLoss(Module):
 
     def critic_loss(
         self,
-        y_pred_real: Tensor,
         y_pred_fake: Tensor,
-        y_orig: Tensor,
+        y_pred_real: Tensor,
         u_pred_sr: Tensor,
+        y_orig: Tensor,
     ) -> Tensor:
         """
         Compute critic loss: maximize E[D(real)] - E[D(fake)] + gradient penalty.
@@ -147,17 +151,9 @@ class WassersteinLoss(Module):
             Combined Wasserstein loss with gradient penalty.
         """
 
-        assert (
-            y_pred_real.shape == y_pred_fake.shape
-        ), "Real and fake predictions must have the same shape"
-
-        assert (
-            y_orig.shape == u_pred_sr.shape
-        ), "Original and super-resolved images must have same shape"
-
         loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
 
-        gradient_penalty = self.compute_gradient_penalty(y_orig, u_pred_sr)
+        gradient_penalty = self.compute_gradient_penalty(u_pred_sr, y_orig)
 
         return loss + gradient_penalty
 

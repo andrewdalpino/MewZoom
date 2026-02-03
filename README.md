@@ -343,7 +343,7 @@ python fine-tune.py --base_checkpoint_path="./checkpoints/2X-100.pt" --critic_mo
 | --train_images_path | "./dataset/train" | str | The path to the folder containing your training images. |
 | --test_images_path | "./dataset/test" | str | The path to the folder containing your testing images. |
 | --num_dataset_processes | 8 | int | The number of CPU processes to use to preprocess the dataset. |
-| --target_resolution | 512 | int | The number of pixels in the height and width dimensions of the training images. |
+| --target_resolution | 256 | int | The number of pixels in the height and width dimensions of the training images. |
 | --min_gaussian_blur | 0.0 | float | The minimum amount of Gaussian blur to apply to the degraded low-resolution image. |
 | --max_gaussian_blur | 2.0 | float | The maximum amount of Gaussian blur to apply to the degraded low-resolution image. |
 | --min_gaussian_noise | 0.0 | float | The minimum amount of Gaussian noise to add to the degraded low-resolution image. |

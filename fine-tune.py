@@ -31,7 +31,7 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom, Bouncer
-from loss import WassersteinLoss, BalancedMultitaskLoss
+from loss import RelativisticBCELoss, BalancedMultitaskLoss
 from metrics import RelativisticF1Score
 
 from tqdm import tqdm
@@ -59,9 +59,9 @@ def main():
     parser.add_argument("--gradient_accumulation_steps", default=8, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
-    parser.add_argument("--critic_max_gradient_norm", default=5.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=5, type=int)
+    parser.add_argument("--critic_learning_rate", default=2e-4, type=float)
+    parser.add_argument("--critic_max_gradient_norm", default=2.0, type=float)
+    parser.add_argument("--critic_step_ratio", default=2, type=int)
     parser.add_argument("--num_epochs", default=100, type=int)
     parser.add_argument("--critic_warmup_epochs", default=2, type=int)
     parser.add_argument(
@@ -200,7 +200,7 @@ def main():
     critic = critic.to(args.device)
 
     l2_loss = MSELoss()
-    wasserstein_loss = WassersteinLoss()
+    bce_loss = RelativisticBCELoss()
     combined_loss = BalancedMultitaskLoss()
 
     upscaler_optimizer = AdamW(
@@ -247,7 +247,7 @@ def main():
 
     for epoch in range(starting_epoch, args.num_epochs + 1):
         total_pixel_l2, total_stage_2_l2, total_stage_3_l2 = 0.0, 0.0, 0.0
-        total_degradation_l2, total_u_wasserstein, total_c_loss = 0.0, 0.0, 0.0
+        total_degradation_l2, total_u_bce, total_c_bce = 0.0, 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
         total_batches, total_steps = 0, 0
 
@@ -260,19 +260,20 @@ def main():
             y_orig = y_orig.to(args.device, non_blocking=True)
             y_deg = y_deg.to(args.device, non_blocking=True)
 
+            y_real = torch.full((y_orig.size(0), 1), 1.0).to(args.device)
+            y_fake = torch.full((y_orig.size(0), 1), 0.0).to(args.device)
+
             update_this_step = step % args.gradient_accumulation_steps == 0
 
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
 
-                _, _, _, _, c_pred_real = critic.forward(y_orig)
                 _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
+                _, _, _, _, c_pred_real = critic.forward(y_orig)
 
-                c_loss = wasserstein_loss.critic_loss(
-                    critic, c_pred_real, c_pred_fake, y_orig, u_pred_sr.detach()
-                )
+                c_bce = bce_loss.forward(c_pred_real, c_pred_fake, y_real, y_fake)
 
-                scaled_c_loss = c_loss / args.gradient_accumulation_steps
+                scaled_c_loss = c_bce / args.gradient_accumulation_steps
 
             scaled_c_loss.backward()
 
@@ -289,31 +290,25 @@ def main():
 
                 total_steps += 1
 
-            total_c_loss += c_loss.item()
+            total_c_bce += c_bce.item()
 
-            if not is_warmup and total_steps % args.critic_step_ratio == 0:
+            if not is_warmup and step % args.critic_step_ratio == 0:
                 with amp_context:
                     pixel_l2 = l2_loss.forward(u_pred_sr, y_orig)
 
                     degradation_l2 = l2_loss.forward(u_pred_deg, y_deg)
 
-                    _, z2_real, z3_real, _, c_pred_real = critic.forward(y_orig)
                     _, z2_fake, z3_fake, _, c_pred_fake = critic.forward(u_pred_sr)
+                    _, z2_real, z3_real, _, c_pred_real = critic.forward(y_orig)
 
                     stage_2_l2 = l2_loss.forward(z2_fake, z2_real)
                     stage_3_l2 = l2_loss.forward(z3_fake, z3_real)
 
-                    u_wasserstein = wasserstein_loss.generator_loss(c_pred_fake)
+                    u_bce = bce_loss.forward(c_pred_real, c_pred_fake, y_fake, y_real)
 
                     u_loss = combined_loss.forward(
                         torch.stack(
-                            [
-                                pixel_l2,
-                                stage_2_l2,
-                                stage_3_l2,
-                                degradation_l2,
-                                u_wasserstein,
-                            ]
+                            [pixel_l2, stage_2_l2, stage_3_l2, degradation_l2, u_bce]
                         )
                     )
 
@@ -336,7 +331,7 @@ def main():
                 total_stage_2_l2 += stage_2_l2.item()
                 total_stage_3_l2 += stage_3_l2.item()
                 total_degradation_l2 += degradation_l2.item()
-                total_u_wasserstein += u_wasserstein.item()
+                total_u_bce += u_bce.item()
 
             total_batches += 1
 
@@ -344,8 +339,8 @@ def main():
         average_stage_2_l2 = total_stage_2_l2 / total_batches
         average_stage_3_l2 = total_stage_3_l2 / total_batches
         average_degradation_l2 = total_degradation_l2 / total_batches
-        average_u_wasserstein = total_u_wasserstein / total_batches
-        average_c_loss = total_c_loss / total_batches
+        average_u_bce = total_u_bce / total_batches
+        average_c_bce = total_c_bce / total_batches
 
         average_u_gradient_norm = total_u_gradient_norm / total_steps
         average_c_gradient_norm = total_c_gradient_norm / total_steps
@@ -354,9 +349,9 @@ def main():
         logger.add_scalar("Stage 2 L2", average_stage_2_l2, epoch)
         logger.add_scalar("Stage 3 L2", average_stage_3_l2, epoch)
         logger.add_scalar("Degradation L2", average_degradation_l2, epoch)
-        logger.add_scalar("Wasserstein", average_u_wasserstein, epoch)
+        logger.add_scalar("Upscaler BCE", average_u_bce, epoch)
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
-        logger.add_scalar("Critic Loss", average_c_loss, epoch)
+        logger.add_scalar("Critic BCE", average_c_bce, epoch)
         logger.add_scalar("Critic Norm", average_c_gradient_norm, epoch)
 
         print(
@@ -365,9 +360,9 @@ def main():
             f"Stage 2 L2: {average_stage_2_l2:.5},",
             f"Stage 3 L2: {average_stage_3_l2:.5},",
             f"Degradation L2: {average_degradation_l2:.5},",
-            f"Wasserstein: {average_u_wasserstein:.5},",
+            f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",
-            f"Critic Loss: {average_c_loss:.5},",
+            f"Critic BCE: {average_c_bce:.5},",
             f"Critic Norm: {average_c_gradient_norm:.4}",
         )
 
@@ -379,6 +374,9 @@ def main():
                 x = x.to(args.device, non_blocking=True)
                 y_orig = y_orig.to(args.device, non_blocking=True)
 
+                y_real = torch.full((y_orig.size(0), 1), 1.0).to(args.device)
+                y_fake = torch.full((y_orig.size(0), 1), 0.0).to(args.device)
+
                 u_pred_sr = upscaler.upscale(x)
 
                 c_pred_fake = critic.predict(u_pred_sr)
@@ -388,18 +386,28 @@ def main():
                 ssim_metric.update(u_pred_sr, y_orig)
                 vif_metric.update(u_pred_sr, y_orig)
 
+                f1_metric.update(c_pred_real, c_pred_fake, y_real, y_fake)
+
             psnr = psnr_metric.compute()
             ssim = ssim_metric.compute()
             vif = vif_metric.compute()
 
+            f1_score, precision, recall = f1_metric.compute()
+
             logger.add_scalar("PSNR", psnr, epoch)
             logger.add_scalar("SSIM", ssim, epoch)
             logger.add_scalar("VIF", vif, epoch)
+            logger.add_scalar("F1 Score", f1_score, epoch)
+            logger.add_scalar("Precision", precision, epoch)
+            logger.add_scalar("Recall", recall, epoch)
 
             print(
                 f"PSNR: {psnr:.5},",
                 f"SSIM: {ssim:.5},",
                 f"VIF: {vif:.5},",
+                f"F1 Score: {f1_score:.5},",
+                f"Precision: {precision:.5},",
+                f"Recall: {recall:.5}",
             )
 
             psnr_metric.reset()

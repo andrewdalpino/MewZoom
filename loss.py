@@ -6,6 +6,8 @@ from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter
 
 from torchvision.models import vgg19, VGG19_Weights
 
+from src.ultrazoom.model import Bouncer
+
 
 class VGGLoss(Module):
     """
@@ -84,21 +86,19 @@ class WassersteinLoss(Module):
     Wasserstein loss with gradient penalty for generative adversarial network training.
     """
 
-    def __init__(self, penalty_lambda: float = 10.0):
+    def __init__(self, critic: Bouncer, penalty_lambda: float = 10.0):
         super().__init__()
 
         assert penalty_lambda > 0.0, "Penalty lambda must be positive."
 
+        self.critic = critic
         self.penalty_lambda = penalty_lambda
 
-    def compute_gradient_penalty(
-        self, critic: Module, y_orig: Tensor, u_pred_sr: Tensor
-    ) -> Tensor:
+    def compute_gradient_penalty(self, y_orig: Tensor, u_pred_sr: Tensor) -> Tensor:
         """
         Compute gradient penalty for Lipschitz constraint enforcement.
 
         Args:
-            critic: The critic network.
             y_orig: Original high-resolution images.
             u_pred_sr: Super-resolved images from the upscaler.
 
@@ -106,35 +106,27 @@ class WassersteinLoss(Module):
             Gradient penalty tensor.
         """
 
-        batch_size = y_orig.size(0)
-
-        device = y_orig.device
-
         # Random interpolation
-        alpha = torch.rand(batch_size, 1, 1, 1, device=device)
+        alpha = torch.rand(y_orig.size(0), 1, 1, 1, device=y_orig.device)
 
         interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr
 
         interpolated.requires_grad_(True)
 
-        _, _, _, _, d_interpolated = critic.forward(interpolated)
+        _, _, _, _, d_interpolated = self.critic.forward(interpolated)
 
         gradients = torch.autograd.grad(
             outputs=d_interpolated,
             inputs=interpolated,
             grad_outputs=torch.ones_like(d_interpolated),
-            create_graph=False,
-            retain_graph=False,
-            only_inputs=True,
-        )[0]
+        )
 
-        penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        penalty = ((gradients.norm(dim=1) - 1) ** 2).mean()
 
         return self.penalty_lambda * penalty
 
     def critic_loss(
         self,
-        critic: Module,
         y_pred_real: Tensor,
         y_pred_fake: Tensor,
         y_orig: Tensor,
@@ -144,7 +136,6 @@ class WassersteinLoss(Module):
         Compute critic loss: maximize E[D(real)] - E[D(fake)] + gradient penalty.
 
         Args:
-            critic: The critic network.
             y_pred_real: Critic output for real images.
             y_pred_fake: Critic output for fake images.
             y_orig: Original high-resolution images.
@@ -162,16 +153,11 @@ class WassersteinLoss(Module):
             y_orig.shape == u_pred_sr.shape
         ), "Original and super-resolved images must have same shape"
 
-        wasserstein_loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
+        loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
 
-        # Gradient penalty
-        gradient_penalty = self.compute_gradient_penalty(
-            critic,
-            y_orig,
-            u_pred_sr,
-        )
+        gradient_penalty = self.compute_gradient_penalty(y_orig, u_pred_sr)
 
-        return wasserstein_loss + gradient_penalty
+        return loss + gradient_penalty
 
     def generator_loss(self, y_pred_fake: Tensor) -> Tensor:
         """

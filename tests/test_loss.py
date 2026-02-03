@@ -3,8 +3,58 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from loss import RelativisticBCELoss
+from loss import AdaptiveMultitaskLoss, RelativisticBCELoss
 
+class TestAdaptiveMultitaskLoss(unittest.TestCase):
+    """Unit test for AdaptiveMultitaskLoss."""
+
+    def setUp(self):
+        self.num_losses = 3
+        self.loss_module = AdaptiveMultitaskLoss(self.num_losses)
+
+    def test_initialization(self):
+        # log_sigmas should be initialized to zero
+        self.assertTrue(torch.allclose(self.loss_module.log_sigmas, torch.zeros(self.num_losses)))
+
+    def test_loss_weights_property(self):
+        # With zero log_sigmas, weights should be one
+        expected_weights = torch.ones(self.num_losses)
+        self.assertTrue(torch.allclose(self.loss_module.loss_weights, expected_weights))
+
+    def test_forward_pass_basic(self):
+        # losses are [1., 2., 3.]
+        losses = torch.tensor([1., 2., 3.])
+        # Combined loss: 0.5 * sum(losses) = 3.0
+        expected = 0.5 * losses.sum()
+        torch.autograd.set_detect_anomaly(False)
+        result = self.loss_module(losses)
+        self.assertTrue(torch.allclose(result, expected))
+
+    def test_forward_size_mismatch(self):
+        losses = torch.tensor([1., 2.])  # wrong size
+        with self.assertRaises(AssertionError):
+            _ = self.loss_module(losses)
+
+    def test_backward(self):
+        losses = torch.tensor([1., 2., 3.], requires_grad=True)
+        loss_value = self.loss_module(losses)
+        loss_value.backward()
+        # No exception means gradients are computed
+        self.assertIsNotNone(losses.grad)
+
+    def test_log_sigmas_update(self):
+        # Set non-zero log_sigmas and recompute
+        manual_sigmas = torch.tensor([0.2, -0.3, 0.5])
+        self.loss_module.log_sigmas.data = manual_sigmas
+        # Recalculate loss weights
+        weights = self.loss_module.loss_weights
+        # Expected weights = exp(-2 * sigmas)
+        expected_weights = torch.exp(-2.0 * manual_sigmas)
+        self.assertTrue(torch.allclose(weights, expected_weights))
+        losses = torch.tensor([1., 2., 3.])
+        combined = 0.5 * (expected_weights * losses).sum() + manual_sigmas.sum()
+        result = self.loss_module(losses)
+        self.assertTrue(torch.allclose(result, combined))
 
 class TestRelativisticBCELoss(unittest.TestCase):
     """Test suite for RelativisticBCELoss class"""

@@ -6,7 +6,7 @@ import torch
 
 from torch.nn.functional import interpolate
 
-from torchvision.io import decode_image
+from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype
 from torchvision.utils import make_grid, save_image
 
@@ -54,7 +54,7 @@ def main():
 
     image_to_tensor = ToDtype(torch.float32, scale=True)
 
-    image = decode_image(args.image_path, mode="RGB")
+    image = decode_image(args.image_path, mode=ImageReadMode.RGB)
 
     x = image_to_tensor(image).unsqueeze(0).to(args.device)
 
@@ -62,7 +62,7 @@ def main():
 
     y_bicubic = interpolate(
         x,
-        scale_factor=2,
+        scale_factor=4,
         mode="bicubic",
         align_corners=False,
         recompute_scale_factor=True,

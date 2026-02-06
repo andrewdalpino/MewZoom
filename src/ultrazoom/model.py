@@ -12,7 +12,6 @@ from torch.nn import (
     Module,
     ModuleList,
     Sequential,
-    Upsample,
     Conv2d,
     SiLU,
     Sigmoid,
@@ -47,7 +46,7 @@ class MewZoom(Module, PyTorchModelHubMixin):
     connections.
     """
 
-    AVAILABLE_UPSCALE_RATIOS = {2, 4, 8}
+    AVAILABLE_UPSCALE_RATIOS = {2, 3, 4}
 
     def __init__(
         self,
@@ -68,7 +67,7 @@ class MewZoom(Module, PyTorchModelHubMixin):
             upscale_ratio in self.AVAILABLE_UPSCALE_RATIOS
         ), f"Upscale ratio must be one of {self.AVAILABLE_UPSCALE_RATIOS}, but got {upscale_ratio}."
 
-        self.bicubic = Upsample(scale_factor=upscale_ratio, mode="bicubic")
+        self.conv = SubpixelConv2d(3, 3, upscale_ratio)
 
         self.stem = FanOutProjection(3, primary_channels)
 
@@ -84,9 +83,9 @@ class MewZoom(Module, PyTorchModelHubMixin):
             hidden_ratio,
         )
 
-        self.head = SuperResolver(primary_channels, hidden_ratio, upscale_ratio)
+        self.head = SuperResolver(primary_channels, upscale_ratio)
 
-        self.skip = ResidualConnection()
+        self.skip = AdaptiveResidualMix(3)
 
         self.upscale_ratio = upscale_ratio
 
@@ -103,9 +102,11 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def initialize_weights(self) -> None:
         """Initialize all model weights using Kaiming uniform initialization."""
 
+        self.conv.initialize_weights()
         self.stem.initialize_weights()
         self.unet.initialize_weights()
         self.head.initialize_weights()
+        self.skip.initialize_weights()
 
     def freeze_parameters(self) -> None:
         """Freeze all model parameters to prevent them from being updated during training."""
@@ -126,16 +127,20 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def add_weight_norms(self) -> None:
         """Add weight normalization parameterization to the network."""
 
+        self.conv.add_weight_norms()
         self.stem.add_weight_norms()
         self.unet.add_weight_norms()
         self.head.add_weight_norms()
+        self.skip.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         """Add LoRA adapters to all layers in the network."""
 
+        self.conv.add_lora_adapters(rank, alpha)
         self.stem.add_lora_adapters(rank, alpha)
         self.unet.add_lora_adapters(rank, alpha)
         self.head.add_lora_adapters(rank, alpha)
+        self.skip.add_lora_adapters(rank, alpha)
 
     def remove_parameterizations(self) -> None:
         """Remove all network parameterizations."""
@@ -155,14 +160,14 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         self.unet.enable_activation_checkpointing()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """
         Args:
             x: Input image tensor of shape (B, 3, H, W).
 
         """
 
-        s = self.bicubic.forward(x)
+        s = self.conv.forward(x)
 
         z = self.stem.forward(x)
         z, z_qa = self.unet.forward(z)
@@ -328,7 +333,7 @@ class UNet(Module):
         self.encoder.enable_activation_checkpointing()
         self.decoder.enable_activation_checkpointing()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         z1, z2, z3, z4, z_qa = self.encoder.forward(x)
 
         z = self.decoder.forward(z4, z3, z2, z1)
@@ -950,72 +955,30 @@ class SubpixelConv2d(Module):
 
 
 class SuperResolver(Module):
-    """A decoder head for progressively upscaling the input feature maps beyond their original size."""
+    """A decoder head for upscaling the input feature maps beyond their original size."""
 
-    def __init__(self, in_channels: int, hidden_ratio: int, upscale_ratio: int):
+    def __init__(self, in_channels: int, upscale_ratio: int):
         super().__init__()
 
         assert upscale_ratio in {
             2,
+            3,
             4,
-            8,
-        }, "Upscale ratio must be either 2, 4, or 8."
+        }, "Upscale ratio must be either 2, 3, or 4."
 
-        num_layers = int(log2(upscale_ratio))
-
-        self.layers = ModuleList(
-            [
-                SR2XBlock(in_channels, hidden_ratio, in_channels)
-                for _ in range(num_layers - 1)
-            ]
-        )
-
-        self.layers.append(SR2XBlock(in_channels, hidden_ratio, 3))
+        self.upscale = SubpixelConv2d(in_channels, 3, upscale_ratio)
 
     def initialize_weights(self) -> None:
-        for module in self.layers:
-            module.initialize_weights()
-
-    def add_weight_norms(self) -> None:
-        for module in self.layers:
-            module.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        for module in self.layers:
-            module.add_lora_adapters(rank, alpha)
-
-    def forward(self, z: Tensor) -> Tensor:
-        for module in self.layers:
-            z = module.forward(z)
-
-        return z
-
-
-class SR2XBlock(Module):
-    """A 2X super-resolution block."""
-
-    def __init__(self, in_channels: int, hidden_ratio: int, out_channels: int):
-        super().__init__()
-
-        self.refiner = DecoderBlock(in_channels, hidden_ratio)
-
-        self.upscale = SubpixelConv2d(in_channels, out_channels, 2)
-
-    def initialize_weights(self) -> None:
-        self.refiner.initialize_weights()
         self.upscale.initialize_weights()
 
     def add_weight_norms(self) -> None:
-        self.refiner.add_weight_norms()
         self.upscale.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        self.refiner.add_lora_adapters(rank, alpha)
         self.upscale.add_lora_adapters(rank, alpha)
 
     def forward(self, x: Tensor) -> Tensor:
-        z = self.refiner.forward(x)
-        z = self.upscale.forward(z)
+        z = self.upscale.forward(x)
 
         return z
 

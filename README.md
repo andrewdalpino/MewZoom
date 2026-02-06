@@ -2,7 +2,7 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of image super-resolution models with cat-like vision and clarity. Looking for the *purrfect* pixels? MewZoom pounces on blurry, low-resolution images and transforms them into crystal-clear high-resolution masterpieces using the power of a deep neural network. Trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism, MewZoom brings out every detail in your fuzzy images - simulanteously removing blur, noise, and compression artifacts while upscaling by 2X, 3X, 4X, or 8X the original size.
+A family of parameter-efficient image super-resolution models with cat-like vision and clarity. Looking for the *purrfect* pixels? MewZoom pounces on blurry, low-resolution images and transforms them into crystal-clear high-resolution masterpieces using the power of a deep neural network. Trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism, MewZoom brings out every detail in your fuzzy images - simulanteously removing blur, noise, and compression artifacts while upscaling by 2X, 3X, 4X, or 8X the original size.
 
 ## Key Features
 

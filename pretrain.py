@@ -189,17 +189,17 @@ def main():
     upscaler.add_qa_head(training.num_degradations)
     upscaler.add_weight_norms()
 
-    upscaler = torch.compile(upscaler)
-
     upscaler = upscaler.to(args.device)
+
+    upscaler: MewZoom = torch.compile(upscaler)
 
     l2_loss = MSELoss()
     vgg_loss = VGGLoss()
     combined_loss = BalancedMultitaskLoss()
 
-    vgg_loss = torch.compile(vgg_loss)
-
     vgg_loss = vgg_loss.to(args.device)
+
+    vgg_loss: VGGLoss = torch.compile(vgg_loss)
 
     print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
     print(f"Perceptual loss function has {vgg_loss.num_params:,} parameters")
@@ -225,7 +225,7 @@ def main():
         print("Previous checkpoint resumed successfully")
 
     if args.activation_checkpointing:
-        upscaler.encoder.enable_activation_checkpointing()
+        upscaler.enable_activation_checkpointing()
 
     print("Training ...")
     upscaler.train()

@@ -2,9 +2,9 @@ import torch
 
 from torch import Tensor
 
-from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter
+from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter, Sequential
 
-from torchvision.models import vgg19, VGG19_Weights
+from torchvision.models import vgg19, VGG19_Weights, VGG
 
 from src.ultrazoom.model import Bouncer
 
@@ -18,15 +18,18 @@ class VGGLoss(Module):
     def __init__(self):
         super().__init__()
 
-        model = vgg19(weights=VGG19_Weights.DEFAULT)
+        model: VGG = vgg19(weights=VGG19_Weights.DEFAULT)
 
         for param in model.parameters():
             param.requires_grad = False
 
         model.eval()
 
-        self.vgg22 = model.features[0:9]
-        self.vgg54 = model.features[9:36]
+        # Compensate for incorrect Torchvision typehinting.
+        features: Sequential = model.features
+
+        self.vgg22 = features[0:9]
+        self.vgg54 = features[9:36]
 
         self.mse = MSELoss()
 

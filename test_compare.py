@@ -5,6 +5,8 @@ from argparse import ArgumentParser
 import torch
 
 from torch.nn.functional import interpolate
+from torch.cuda import is_available as cuda_is_available
+from torch.backends.mps import is_available as mps_is_available
 
 from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype
@@ -26,8 +28,11 @@ def main():
 
     args = parser.parse_args()
 
-    if "cuda" in args.device and not torch.cuda.is_available():
+    if "cuda" in args.device and not cuda_is_available():
         raise RuntimeError("Cuda is not available.")
+
+    if "mps" in args.device and not mps_is_available():
+        raise RuntimeError("MPS is not available.")
 
     checkpoint = torch.load(args.checkpoint_path, map_location="cpu", weights_only=True)
 
@@ -62,7 +67,7 @@ def main():
 
     y_bicubic = interpolate(
         x,
-        scale_factor=4,
+        scale_factor=model.upscale_ratio,
         mode="bicubic",
         align_corners=False,
         recompute_scale_factor=True,

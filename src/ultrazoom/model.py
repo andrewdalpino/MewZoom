@@ -1,4 +1,4 @@
-from math import sqrt, floor, ceil, log2
+from math import sqrt, floor, ceil
 
 from typing import Self
 
@@ -67,8 +67,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
             upscale_ratio in self.AVAILABLE_UPSCALE_RATIOS
         ), f"Upscale ratio must be one of {self.AVAILABLE_UPSCALE_RATIOS}, but got {upscale_ratio}."
 
-        self.conv = SubpixelConv2d(3, 3, upscale_ratio)
-
         self.stem = FanOutProjection(3, primary_channels)
 
         self.unet = UNet(
@@ -85,8 +83,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         self.head = SuperResolver(primary_channels, upscale_ratio)
 
-        self.skip = AdaptiveResidualMix(3)
-
         self.upscale_ratio = upscale_ratio
 
     @property
@@ -102,11 +98,9 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def initialize_weights(self) -> None:
         """Initialize all model weights using Kaiming uniform initialization."""
 
-        self.conv.initialize_weights()
         self.stem.initialize_weights()
         self.unet.initialize_weights()
         self.head.initialize_weights()
-        self.skip.initialize_weights()
 
     def freeze_parameters(self) -> None:
         """Freeze all model parameters to prevent them from being updated during training."""
@@ -127,20 +121,16 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def add_weight_norms(self) -> None:
         """Add weight normalization parameterization to the network."""
 
-        self.conv.add_weight_norms()
         self.stem.add_weight_norms()
         self.unet.add_weight_norms()
         self.head.add_weight_norms()
-        self.skip.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         """Add LoRA adapters to all layers in the network."""
 
-        self.conv.add_lora_adapters(rank, alpha)
         self.stem.add_lora_adapters(rank, alpha)
         self.unet.add_lora_adapters(rank, alpha)
         self.head.add_lora_adapters(rank, alpha)
-        self.skip.add_lora_adapters(rank, alpha)
 
     def remove_parameterizations(self) -> None:
         """Remove all network parameterizations."""
@@ -167,13 +157,9 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         """
 
-        s = self.conv.forward(x)
-
         z = self.stem.forward(x)
         z, z_qa = self.unet.forward(z)
         z = self.head.forward(z)
-
-        z = self.skip.forward(s, z)
 
         return z, z_qa
 
@@ -193,7 +179,7 @@ class MewZoom(Module, PyTorchModelHubMixin):
         return z
 
     @torch.inference_mode()
-    def predict_degredation(self, x: Tensor) -> Tensor:
+    def predict_degradation(self, x: Tensor) -> Tensor:
         """
         Convenience method for predicting degradation features.
 
@@ -1030,15 +1016,13 @@ class Bouncer(Module):
     def from_preconfigured(cls, model_size: str) -> Self:
         """Return a new pre-configured model."""
 
-        assert model_size in cls.AVAILABLE_MODEL_SIZES, "Invalid model size."
-
         primary_layers = 3
         quaternary_layers = 3
 
         match model_size:
             case "small":
                 primary_channels = 64
-                secondary_channels = 126
+                secondary_channels = 128
                 secondary_layers = 4
                 tertiary_channels = 256
                 tertiary_layers = 6
@@ -1059,6 +1043,9 @@ class Bouncer(Module):
                 tertiary_channels = 512
                 tertiary_layers = 24
                 quaternary_channels = 1024
+
+            case _:
+                raise ValueError("Invalid model size.")
 
         return cls(
             3,
@@ -1119,6 +1106,11 @@ class Bouncer(Module):
 
                 for name in params:
                     remove_parametrizations(module, name)
+
+    def enable_activation_checkpointing(self) -> None:
+        """Enable activation checkpointing for the detector."""
+
+        self.detector.enable_activation_checkpointing()
 
     def forward(self, x: Tensor) -> tuple[Tensor, ...]:
         z1, z2, z3, z4 = self.detector.forward(x)

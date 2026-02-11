@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.nn import MSELoss
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW
-from torch.amp import autocast
+from torch.amp.autocast_mode import autocast
 from torch.cuda import is_available as cuda_is_available, is_bf16_supported
 from torch.backends.mps import is_available as mps_is_available
 from torch.utils.tensorboard import SummaryWriter
@@ -55,15 +55,15 @@ def main():
     parser.add_argument("--contrast_jitter", default=0.15, type=float)
     parser.add_argument("--saturation_jitter", default=0.2, type=float)
     parser.add_argument("--hue_jitter", default=0.03, type=float)
-    parser.add_argument("--batch_size", default=16, type=int)
-    parser.add_argument("--gradient_accumulation_steps", default=8, type=int)
+    parser.add_argument("--batch_size", default=8, type=int)
+    parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_step_ratio", default=2, type=int)
-    parser.add_argument("--num_epochs", default=100, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=2, type=int)
+    parser.add_argument("--num_epochs", default=50, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=4, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -104,8 +104,6 @@ def main():
 
     if "mps" in args.device and not mps_is_available():
         raise RuntimeError("MPS is not available.")
-
-    torch.backends.cudnn.conv.fp32_precision = "tf32"
 
     dtype = (
         torch.bfloat16
@@ -229,8 +227,8 @@ def main():
         print("Previous checkpoint resumed successfully")
 
     if args.activation_checkpointing:
-        upscaler.encoder.enable_activation_checkpointing()
-        critic.detector.enable_activation_checkpointing()
+        upscaler.enable_activation_checkpointing()
+        critic.enable_activation_checkpointing()
 
     print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
     print(f"Critic has {critic.num_trainable_params:,} trainable parameters")
@@ -246,7 +244,7 @@ def main():
     critic.train()
 
     for epoch in range(starting_epoch, args.num_epochs + 1):
-        total_pixel_l2, total_stage_2_l2, total_stage_3_l2 = 0.0, 0.0, 0.0
+        total_pixel_l2, total_stage2_l2 = 0.0, 0.0
         total_degradation_l2, total_u_bce, total_c_bce = 0.0, 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
         total_batches, total_steps = 0, 0
@@ -260,13 +258,24 @@ def main():
             y_orig = y_orig.to(args.device, non_blocking=True)
             y_deg = y_deg.to(args.device, non_blocking=True)
 
-            update_this_step = step % args.gradient_accumulation_steps == 0
+            critic_update_step = step % args.gradient_accumulation_steps == 0
+
+            upscaler_trains_this_step = (
+                not is_warmup and step % args.critic_step_ratio == 0
+            )
+
+            upscaler_step = step // args.critic_step_ratio
+
+            upscaler_update_step = (
+                upscaler_trains_this_step
+                and upscaler_step % args.gradient_accumulation_steps == 0
+            )
 
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
 
                 _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
-                _, _, _, _, c_pred_real = critic.forward(y_orig)
+                _, z2_real, _, _, c_pred_real = critic.forward(y_orig)
 
                 c_bce = bce_loss.forward(c_pred_fake, c_pred_real)
 
@@ -274,7 +283,7 @@ def main():
 
             scaled_c_loss.backward()
 
-            if update_this_step:
+            if critic_update_step:
                 c_norm = clip_grad_norm_(
                     critic.parameters(), args.critic_max_gradient_norm
                 )
@@ -289,31 +298,28 @@ def main():
 
             total_c_bce += c_bce.item()
 
-            if not is_warmup and step % args.critic_step_ratio == 0:
+            if upscaler_trains_this_step:
                 with amp_context:
                     pixel_l2 = l2_loss.forward(u_pred_sr, y_orig)
 
                     degradation_l2 = l2_loss.forward(u_pred_deg, y_deg)
 
-                    _, z2_fake, z3_fake, _, c_pred_fake = critic.forward(u_pred_sr)
-                    _, z2_real, z3_real, _, c_pred_real = critic.forward(y_orig)
+                    _, z2_fake, _, _, c_pred_fake = critic.forward(u_pred_sr)
 
-                    stage_2_l2 = l2_loss.forward(z2_fake, z2_real)
-                    stage_3_l2 = l2_loss.forward(z3_fake, z3_real)
+                    stage2_l2 = l2_loss.forward(z2_fake, z2_real.detach())
 
-                    u_bce = bce_loss.forward(c_pred_fake, c_pred_real)
+                    # Swap real and fake for generator loss.
+                    u_bce = bce_loss.forward(c_pred_real.detach(), c_pred_fake)
 
                     u_loss = combined_loss.forward(
-                        torch.stack(
-                            [pixel_l2, stage_2_l2, stage_3_l2, degradation_l2, u_bce]
-                        )
+                        torch.stack([pixel_l2, stage2_l2, degradation_l2, u_bce])
                     )
 
                     scaled_u_loss = u_loss / args.gradient_accumulation_steps
 
                 scaled_u_loss.backward()
 
-                if update_this_step:
+                if upscaler_update_step:
                     u_norm = clip_grad_norm_(
                         upscaler.parameters(), args.upscaler_max_gradient_norm
                     )
@@ -325,16 +331,14 @@ def main():
                     total_u_gradient_norm += u_norm.item()
 
                 total_pixel_l2 += pixel_l2.item()
-                total_stage_2_l2 += stage_2_l2.item()
-                total_stage_3_l2 += stage_3_l2.item()
+                total_stage2_l2 += stage2_l2.item()
                 total_degradation_l2 += degradation_l2.item()
                 total_u_bce += u_bce.item()
 
             total_batches += 1
 
         average_pixel_l2 = total_pixel_l2 / total_batches
-        average_stage_2_l2 = total_stage_2_l2 / total_batches
-        average_stage_3_l2 = total_stage_3_l2 / total_batches
+        average_stage2_l2 = total_stage2_l2 / total_batches
         average_degradation_l2 = total_degradation_l2 / total_batches
         average_u_bce = total_u_bce / total_batches
         average_c_bce = total_c_bce / total_batches
@@ -343,8 +347,7 @@ def main():
         average_c_gradient_norm = total_c_gradient_norm / total_steps
 
         logger.add_scalar("Pixel L2", average_pixel_l2, epoch)
-        logger.add_scalar("Stage 2 L2", average_stage_2_l2, epoch)
-        logger.add_scalar("Stage 3 L2", average_stage_3_l2, epoch)
+        logger.add_scalar("Stage 2 L2", average_stage2_l2, epoch)
         logger.add_scalar("Degradation L2", average_degradation_l2, epoch)
         logger.add_scalar("Upscaler BCE", average_u_bce, epoch)
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
@@ -354,8 +357,7 @@ def main():
         print(
             f"Epoch {epoch}:",
             f"Pixel L2: {average_pixel_l2:.5},",
-            f"Stage 2 L2: {average_stage_2_l2:.5},",
-            f"Stage 3 L2: {average_stage_3_l2:.5},",
+            f"Stage 2 L2: {average_stage2_l2:.5},",
             f"Degradation L2: {average_degradation_l2:.5},",
             f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",

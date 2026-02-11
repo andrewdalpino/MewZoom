@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.nn import MSELoss
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW
-from torch.amp import autocast
+from torch.amp.autocast_mode import autocast
 from torch.cuda import is_available as cuda_is_available, is_bf16_supported
 from torch.backends.mps import is_available as mps_is_available
 from torch.utils.tensorboard import SummaryWriter

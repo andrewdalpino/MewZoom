@@ -24,10 +24,10 @@ class RelativisticF1Score(Module):
         y_fake = y_fake.to(y_pred_fake.device)
         y_real = y_real.to(y_pred_real.device)
 
-        y_pred_fake -= y_pred_real.mean()
-        y_pred_real -= y_pred_fake.mean()
+        y_pred_fake_hat = y_pred_fake - y_pred_real.mean()
+        y_pred_real_hat = y_pred_real - y_pred_fake.mean()
 
-        y_pred = torch.cat((y_pred_fake, y_pred_real), dim=0)
+        y_pred = torch.cat((y_pred_fake_hat, y_pred_real_hat), dim=0)
         labels = torch.cat((y_fake, y_real), dim=0)
 
         self.precision_metric.update(y_pred, labels)

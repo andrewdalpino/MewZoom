@@ -70,10 +70,10 @@ class RelativisticBCELoss(Module):
         y_fake = y_fake.to(y_pred_fake.device)
         y_real = y_real.to(y_pred_real.device)
 
-        y_pred_fake -= y_pred_real.mean()
-        y_pred_real -= y_pred_fake.mean()
+        y_pred_fake_hat = y_pred_fake - y_pred_real.mean()
+        y_pred_real_hat = y_pred_real - y_pred_fake.mean()
 
-        y_pred = torch.cat((y_pred_fake, y_pred_real))
+        y_pred = torch.cat((y_pred_fake_hat, y_pred_real_hat))
         y = torch.cat((y_fake, y_real))
 
         loss = self.bce.forward(y_pred, y)
@@ -169,25 +169,6 @@ class WassersteinLoss(Module):
         """
 
         return -torch.mean(y_pred_fake)
-
-
-class DegredationAwareFocalLossWeighting(Module):
-    """
-    A loss weighting that focuses the loss on samples that are harder to upscale due to having
-    higher amounts of degradation present in the input.
-    """
-
-    def __init__(self, gamma: float):
-        super().__init__()
-
-        self.gamma = gamma
-
-    def forward(self, y_qa: Tensor) -> Tensor:
-        qa_norms = y_qa.norm(dim=1, keepdim=True)
-
-        weights = (1 + qa_norms) ** self.gamma
-
-        return weights
 
 
 class BalancedMultitaskLoss(Module):

@@ -47,3 +47,35 @@ class RelativisticF1Score(Module):
     def reset(self) -> None:
         self.precision_metric.reset()
         self.recall_metric.reset()
+
+
+class EarthMoverMetric(Module):
+    """Computes the Wasserstein distance (Earth Mover's Distance) between real and fake critic scores."""
+
+    def __init__(self):
+        super().__init__()
+
+        self.reset()
+
+    def update(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> None:
+        self.sum_real += y_pred_real.sum()
+        self.sum_fake += y_pred_fake.sum()
+
+        self.count += y_pred_real.size(0)
+
+    def compute(self) -> Tensor:
+        if self.count == 0:
+            return torch.tensor(0.0)
+
+        mean_real = self.sum_real / self.count
+        mean_fake = self.sum_fake / self.count
+
+        distance = mean_real - mean_fake
+
+        return distance
+
+    def reset(self) -> None:
+        self.sum_real = torch.tensor(0.0)
+        self.sum_fake = torch.tensor(0.0)
+
+        self.count = 0

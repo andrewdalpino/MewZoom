@@ -89,13 +89,14 @@ class WassersteinLoss(Module):
     Wasserstein loss with gradient penalty for generative adversarial network training.
     """
 
-    def __init__(self, critic: Bouncer, penalty_lambda: float = 10.0):
+    def __init__(self, critic: Bouncer, penalty_lambda: float):
         super().__init__()
 
         assert penalty_lambda > 0.0, "Penalty lambda must be positive."
 
         self.critic = critic
         self.penalty_lambda = penalty_lambda
+        self.gradient_penalty = torch.tensor(0.0)
 
     def compute_gradient_penalty(self, u_pred_sr: Tensor, y_orig: Tensor) -> Tensor:
         """
@@ -116,7 +117,7 @@ class WassersteinLoss(Module):
         # Uniform random interpolation.
         alpha = torch.rand(y_orig.size(0), 1, 1, 1, device=y_orig.device)
 
-        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr.detach()
+        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr
 
         interpolated.requires_grad_(True)
 
@@ -127,7 +128,6 @@ class WassersteinLoss(Module):
             inputs=interpolated,
             grad_outputs=torch.ones_like(d_interpolated),
             create_graph=True,
-            retain_graph=True,
         )
 
         penalty = ((gradients[0].norm(dim=1) - 1) ** 2).mean()
@@ -140,6 +140,7 @@ class WassersteinLoss(Module):
         y_pred_real: Tensor,
         u_pred_sr: Tensor,
         y_orig: Tensor,
+        compute_penalty: bool,
     ) -> Tensor:
         """
         Compute critic loss: maximize E[D(real)] - E[D(fake)] + gradient penalty.
@@ -149,6 +150,7 @@ class WassersteinLoss(Module):
             y_pred_fake: Critic output for fake images.
             y_orig: Original high-resolution images.
             u_pred_sr: Super-resolved images from the upscaler.
+            compute_penalty: Whether to compute gradient penalty (default: True).
 
         Returns:
             Combined Wasserstein loss with gradient penalty.
@@ -156,11 +158,18 @@ class WassersteinLoss(Module):
 
         loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
 
-        gradient_penalty = self.compute_gradient_penalty(u_pred_sr, y_orig)
+        if compute_penalty:
+            gradient_penalty = self.compute_gradient_penalty(u_pred_sr, y_orig)
 
-        return loss + gradient_penalty
+            self.gradient_penalty = gradient_penalty.detach()
+        else:
+            gradient_penalty = self.gradient_penalty
 
-    def generator_loss(self, y_pred_fake: Tensor) -> Tensor:
+        loss = loss + gradient_penalty
+
+        return loss
+
+    def upscaler_loss(self, y_pred_fake: Tensor) -> Tensor:
         """
         Compute generator loss: minimize -E[D(fake)].
 
@@ -177,13 +186,22 @@ class WassersteinLoss(Module):
 class BalancedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 
-    def __init__(self):
+    def __init__(self, epsilon: float = 1e-8):
         super().__init__()
 
-    def forward(self, losses: Tensor) -> Tensor:
-        combined_loss = losses / losses.detach()
+        self.epsilon = epsilon
 
-        combined_loss = combined_loss.sum()
+    def forward(self, losses: Tensor) -> Tensor:
+        losses_detached = losses.detach()
+
+        l2_norm = torch.norm(losses_detached, p=2)
+
+        # Prevent division by zero.
+        l2_norm = torch.clamp(l2_norm, min=self.epsilon)
+
+        normalized_losses = losses / l2_norm
+
+        combined_loss = normalized_losses.sum()
 
         return combined_loss
 

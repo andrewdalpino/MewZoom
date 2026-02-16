@@ -58,12 +58,12 @@ def main():
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
+    parser.add_argument("--upscaler_max_gradient_norm", default=0.5, type=float)
     parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=2, type=int)
+    parser.add_argument("--critic_max_gradient_norm", default=0.5, type=float)
+    parser.add_argument("--critic_step_ratio", default=1, type=int)
     parser.add_argument("--num_epochs", default=50, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=4, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=2, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -247,7 +247,8 @@ def main():
         total_pixel_l2, total_stage2_l2 = 0.0, 0.0
         total_degradation_l2, total_u_bce, total_c_bce = 0.0, 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
-        total_batches, total_steps = 0, 0
+        total_upscaler_batches, total_critic_batches = 0, 0
+        total_upscaler_steps, total_critic_steps = 0, 0
 
         is_warmup = epoch <= args.critic_warmup_epochs
 
@@ -294,9 +295,11 @@ def main():
 
                 total_c_gradient_norm += c_norm.item()
 
-                total_steps += 1
+                total_critic_steps += 1
 
             total_c_bce += c_bce.item()
+
+            total_critic_batches += 1
 
             if upscaler_trains_this_step:
                 with amp_context:
@@ -311,9 +314,9 @@ def main():
                     # Swap real and fake for generator loss.
                     u_bce = bce_loss.forward(c_pred_real.detach(), c_pred_fake)
 
-                    u_loss = combined_loss.forward(
-                        torch.stack([pixel_l2, stage2_l2, degradation_l2, u_bce])
-                    )
+                    losses = torch.stack([pixel_l2, stage2_l2, degradation_l2, u_bce])
+
+                    u_loss = combined_loss.forward(losses)
 
                     scaled_u_loss = u_loss / args.gradient_accumulation_steps
 
@@ -330,21 +333,27 @@ def main():
 
                     total_u_gradient_norm += u_norm.item()
 
+                    total_upscaler_steps += 1
+
                 total_pixel_l2 += pixel_l2.item()
                 total_stage2_l2 += stage2_l2.item()
                 total_degradation_l2 += degradation_l2.item()
                 total_u_bce += u_bce.item()
 
-            total_batches += 1
+                total_upscaler_batches += 1
 
-        average_pixel_l2 = total_pixel_l2 / total_batches
-        average_stage2_l2 = total_stage2_l2 / total_batches
-        average_degradation_l2 = total_degradation_l2 / total_batches
-        average_u_bce = total_u_bce / total_batches
-        average_c_bce = total_c_bce / total_batches
+        # Prevent divide by zero errors when no updates were made to the this epoch.
+        total_upscaler_batches = max(total_upscaler_batches, 1)
+        total_upscaler_steps = max(total_upscaler_steps, 1)
 
-        average_u_gradient_norm = total_u_gradient_norm / total_steps
-        average_c_gradient_norm = total_c_gradient_norm / total_steps
+        average_pixel_l2 = total_pixel_l2 / total_upscaler_batches
+        average_stage2_l2 = total_stage2_l2 / total_upscaler_batches
+        average_degradation_l2 = total_degradation_l2 / total_upscaler_batches
+        average_u_bce = total_u_bce / total_upscaler_batches
+        average_c_bce = total_c_bce / total_critic_batches
+
+        average_u_gradient_norm = total_u_gradient_norm / total_upscaler_steps
+        average_c_gradient_norm = total_c_gradient_norm / total_critic_steps
 
         logger.add_scalar("Pixel L2", average_pixel_l2, epoch)
         logger.add_scalar("Stage 2 L2", average_stage2_l2, epoch)

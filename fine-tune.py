@@ -31,7 +31,7 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom, Bouncer
-from loss import RelativisticBCELoss, BalancedMultitaskLoss
+from loss import RelativisticBCELoss, BalancedMultitaskLoss, AdaptiveMultitaskLoss
 from metrics import RelativisticF1Score
 
 from tqdm import tqdm
@@ -57,10 +57,10 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--upscaler_max_gradient_norm", default=0.5, type=float)
+    parser.add_argument("--upscaler_learning_rate", default=5e-5, type=float)
+    parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--critic_max_gradient_norm", default=0.5, type=float)
+    parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_step_ratio", default=1, type=int)
     parser.add_argument("--num_epochs", default=50, type=int)
     parser.add_argument("--critic_warmup_epochs", default=2, type=int)
@@ -199,15 +199,12 @@ def main():
 
     l2_loss = MSELoss()
     bce_loss = RelativisticBCELoss()
+    # combined_loss = AdaptiveMultitaskLoss(num_losses=4).to(args.device)
     combined_loss = BalancedMultitaskLoss()
 
-    upscaler_optimizer = AdamW(
-        upscaler.parameters(), lr=args.upscaler_learning_rate, weight_decay=1e-4
-    )
+    upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate, betas=(0.5, 0.999))
 
-    critic_optimizer = AdamW(
-        critic.parameters(), lr=args.critic_learning_rate, weight_decay=1e-5
-    )
+    critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate, betas=(0.5, 0.999))
 
     starting_epoch = 1
 
@@ -309,7 +306,7 @@ def main():
 
                     _, z2_fake, _, _, c_pred_fake = critic.forward(u_pred_sr)
 
-                    stage2_l2 = l2_loss.forward(z2_fake, z2_real.detach())
+                    stage2_l2 = l2_loss.forward(z2_real.detach(), z2_fake)
 
                     # Swap real and fake for generator loss.
                     u_bce = bce_loss.forward(c_pred_real.detach(), c_pred_fake)

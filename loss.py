@@ -183,7 +183,30 @@ class WassersteinLoss(Module):
         return -torch.mean(y_pred_fake)
 
 
+class UnbalancedMultitaskLoss(Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, losses: Tensor) -> Tensor:
+        combined_loss = losses.sum()
+
+        return combined_loss
+
 class BalancedMultitaskLoss(Module):
+    """A dynamic multitask loss weighting where each task contributes equally."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, losses: Tensor) -> Tensor:
+        balanced_losses = losses / losses.detach()
+
+        combined_loss = balanced_losses.sum()
+
+        return combined_loss
+    
+
+class NormalizedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 
     def __init__(self, epsilon: float = 1e-8):
@@ -192,9 +215,7 @@ class BalancedMultitaskLoss(Module):
         self.epsilon = epsilon
 
     def forward(self, losses: Tensor) -> Tensor:
-        losses_detached = losses.detach()
-
-        l2_norm = torch.norm(losses_detached, p=2)
+        l2_norm = torch.norm(losses.detach(), p=2)
 
         # Prevent division by zero.
         l2_norm = torch.clamp(l2_norm, min=self.epsilon)

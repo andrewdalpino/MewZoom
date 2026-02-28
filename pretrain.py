@@ -30,7 +30,7 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom
-from loss import VGGLoss, BalancedMultitaskLoss
+from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
 
@@ -60,7 +60,7 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
-    parser.add_argument("--num_epochs", default=200, type=int)
+    parser.add_argument("--num_epochs", default=100, type=int)
     parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
@@ -194,12 +194,10 @@ def main():
     upscaler: MewZoom = torch.compile(upscaler)
 
     l2_loss = MSELoss()
-    vgg_loss = VGGLoss()
-    combined_loss = BalancedMultitaskLoss()
+    vgg_loss = VGGLoss().to(args.device)
+    combined_loss = AdaptiveMultitaskLoss(4).to(args.device)
 
     vgg_loss = vgg_loss.to(args.device)
-
-    vgg_loss: VGGLoss = torch.compile(vgg_loss)
 
     print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
     print(f"Perceptual loss function has {vgg_loss.num_params:,} parameters")

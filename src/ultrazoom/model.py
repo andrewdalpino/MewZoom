@@ -67,8 +67,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
             upscale_ratio in self.AVAILABLE_UPSCALE_RATIOS
         ), f"Upscale ratio must be one of {self.AVAILABLE_UPSCALE_RATIOS}, but got {upscale_ratio}."
 
-        self.global_residual = GlobalResidual(primary_channels, upscale_ratio)
-
         self.stem = FanOutProjection(3, primary_channels)
 
         self.unet = UNet(
@@ -85,8 +83,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         self.head = SuperResolver(primary_channels, upscale_ratio)
 
-        self.skip = AdaptiveResidualMix(3)
-
         self.upscale_ratio = upscale_ratio
 
     @property
@@ -102,12 +98,9 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def initialize_weights(self) -> None:
         """Initialize all model weights using Kaiming uniform initialization."""
 
-        self.global_residual.initialize_weights()
-
         self.stem.initialize_weights()
         self.unet.initialize_weights()
         self.head.initialize_weights()
-        self.skip.initialize_weights()
 
     def freeze_parameters(self) -> None:
         """Freeze all model parameters to prevent them from being updated during training."""
@@ -128,22 +121,16 @@ class MewZoom(Module, PyTorchModelHubMixin):
     def add_weight_norms(self) -> None:
         """Add weight normalization parameterization to the network."""
 
-        self.global_residual.add_weight_norms()
-
         self.stem.add_weight_norms()
         self.unet.add_weight_norms()
         self.head.add_weight_norms()
-        self.skip.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         """Add LoRA adapters to all layers in the network."""
 
-        self.global_residual.add_lora_adapters(rank, alpha)
-
         self.stem.add_lora_adapters(rank, alpha)
         self.unet.add_lora_adapters(rank, alpha)
         self.head.add_lora_adapters(rank, alpha)
-        self.skip.add_lora_adapters(rank, alpha)
 
     def remove_parameterizations(self) -> None:
         """Remove all network parameterizations."""
@@ -170,13 +157,9 @@ class MewZoom(Module, PyTorchModelHubMixin):
 
         """
 
-        s = self.global_residual.forward(x)
-
         z = self.stem.forward(x)
         z, z_qa = self.unet.forward(z)
         z = self.head.forward(z)
-
-        z = self.skip.forward(s, z)
 
         return z, z_qa
 
@@ -224,33 +207,6 @@ class ONNXModel(Module):
         """
 
         return self.model.upscale(x)
-
-
-class GlobalResidual(Module):
-    def __init__(self, num_channels: int, upscale_ratio: int):
-        super().__init__()
-
-        self.proj = FanOutProjection(3, num_channels)
-
-        self.upscale = SubpixelConv2d(num_channels, 3, upscale_ratio)
-
-    def initialize_weights(self) -> None:
-        self.proj.initialize_weights()
-        self.upscale.initialize_weights()
-
-    def add_weight_norms(self) -> None:
-        self.proj.add_weight_norms()
-        self.upscale.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        self.proj.add_lora_adapters(rank, alpha)
-        self.upscale.add_lora_adapters(rank, alpha)
-
-    def forward(self, x: Tensor) -> Tensor:
-        z = self.proj.forward(x)
-        z = self.upscale.forward(z)
-
-        return z
 
 
 class FanOutProjection(Module):

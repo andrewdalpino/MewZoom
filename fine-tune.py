@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
     parser.add_argument("--num_dataset_processes", default=8, type=int)
-    parser.add_argument("--target_resolution", default=256, type=int)
+    parser.add_argument("--target_resolution", default=512, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
     parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
     parser.add_argument("--min_gaussian_noise", default=0.0, type=float)
@@ -61,6 +61,8 @@ def main():
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_learning_rate", default=1e-5, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
+    parser.add_argument("--r1_penalty_gamma", default=2.0, type=float)
+    parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)
     parser.add_argument("--critic_warmup_epochs", default=1, type=int)
     parser.add_argument(
@@ -198,8 +200,8 @@ def main():
 
     l2_loss = MSELoss()
     bce_loss = RelativisticBCELoss()
-    r1_penalty = R1GradientPenalty(gamma=1.0)
-    combined_loss = BalancedMultitaskLoss()
+    r1_penalty = R1GradientPenalty(gamma=args.r1_penalty_gamma)
+    combined_loss = BalancedMultitaskLoss(epsilon=args.combined_loss_epsilon)
 
     upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
     critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate)

@@ -7,7 +7,7 @@ from torch import Tensor
 
 from torch.utils.data import Dataset
 
-from torchvision.io import decode_image
+from torchvision.io import ImageReadMode, decode_image
 
 from torchvision.transforms.v2 import (
     Transform,
@@ -16,6 +16,7 @@ from torchvision.transforms.v2 import (
     ToDtype,
 )
 
+from torchvision.io import ImageReadMode
 from torchvision.transforms.v2.functional import InterpolationMode
 
 from PIL import Image
@@ -30,7 +31,7 @@ class ImageFolder(Dataset):
 
     ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
-    IMAGE_MODE = "RGB"
+    IMAGE_MODE = ImageReadMode.RGB
 
     def __init__(
         self,
@@ -135,7 +136,7 @@ class ImageFolder(Dataset):
     def num_degradations(self) -> int:
         return 3
 
-    def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
+    def __getitem__(self, index: int) -> tuple[Tensor, Tensor, Tensor]:
         image_path = self.image_paths[index]
 
         image = decode_image(image_path, mode=self.IMAGE_MODE)
@@ -179,7 +180,7 @@ class ImagePairs(Dataset):
 
     ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
-    IMAGE_MODE = "RGB"
+    IMAGE_MODE = ImageReadMode.RGB
 
     def __init__(self, lr_root_path: str, hr_root_path: str):
         lr_image_paths = []

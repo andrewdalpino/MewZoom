@@ -6,8 +6,6 @@ from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter, Sequential
 
 from torchvision.models import vgg19, VGG19_Weights, VGG
 
-from src.ultrazoom.model import Bouncer
-
 
 class VGGLoss(Module):
     """
@@ -75,11 +73,8 @@ class RelativisticBCELoss(Module):
             y_pred_fake: Critic output for fake images.
         """
 
-        y_fake = torch.zeros((y_pred_fake.size(0), 1))
-        y_real = torch.ones((y_pred_real.size(0), 1))
-
-        y_fake = y_fake.to(y_pred_fake.device)
-        y_real = y_real.to(y_pred_real.device)
+        y_fake = torch.zeros((y_pred_fake.size(0), 1)).to(y_pred_fake.device)
+        y_real = torch.ones((y_pred_real.size(0), 1)).to(y_pred_real.device)
 
         y_pred_fake_hat = y_pred_fake - y_pred_real.mean()
         y_pred_real_hat = y_pred_real - y_pred_fake.mean()
@@ -100,9 +95,7 @@ class RelativisticBCELoss(Module):
             y_pred_real: Critic output for real images.
         """
 
-        y = torch.ones((y_pred_fake.size(0), 1))
-
-        y = y.to(y_pred_fake.device)
+        y = torch.ones((y_pred_fake.size(0), 1)).to(y_pred_fake.device)
 
         y_pred = y_pred_fake - y_pred_real.mean()
 
@@ -117,10 +110,12 @@ class R1GradientPenalty(Module):
     gradient of the critic's output with respect to real images.
     """
 
-    def __init__(self, gamma: float = 1.0):
+    def __init__(self, gamma: float):
         super().__init__()
 
-        self.gamma = gamma
+        assert gamma >= 0.0, "Gamma must be non-negative."
+
+        self.gamma = torch.tensor(gamma)
 
     def forward(self, y_pred_real: Tensor, x_real: Tensor) -> Tensor:
         """
@@ -151,8 +146,10 @@ class R1GradientPenalty(Module):
 class BalancedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 
-    def __init__(self, epsilon: float = 1e-8):
+    def __init__(self, epsilon: float):
         super().__init__()
+
+        assert epsilon > 0.0, "Epsilon must be positive."
 
         self.epsilon = epsilon
 

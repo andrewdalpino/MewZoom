@@ -224,7 +224,6 @@ class ONNXModel(Module):
         """
 
         return self.model.upscale(x)
-    
 
 
 class GlobalResidual(Module):
@@ -252,6 +251,7 @@ class GlobalResidual(Module):
         z = self.upscale.forward(z)
 
         return z
+
 
 class FanOutProjection(Module):
     """A linear projection for expanding the number of channels."""
@@ -870,6 +870,9 @@ class AdaptiveResidualMix(Module):
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
 
+    def add_spectral_norms(self) -> None:
+        self.conv = spectral_norm(self.conv)
+
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         register_parametrization(
             self.conv,
@@ -1139,6 +1142,7 @@ class Bouncer(Module):
         """Add spectral normalization to the network."""
 
         self.detector.add_spectral_norms()
+
         self.head.add_spectral_norms()
 
     def remove_parameterizations(self) -> None:
@@ -1293,6 +1297,8 @@ class DetectorBlock(Module):
         self.conv1.add_spectral_norms()
 
         self.conv2 = spectral_norm(self.conv2)
+
+        self.skip.add_spectral_norms()
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv1.forward(x)

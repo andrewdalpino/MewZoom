@@ -66,9 +66,17 @@ class RelativisticBCELoss(Module):
 
         self.bce = BCEWithLogitsLoss()
 
-    def forward(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
-        y_fake = torch.full((y_pred_fake.size(0), 1), 0.0)
-        y_real = torch.full((y_pred_real.size(0), 1), 1.0)
+    def forward_critic(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
+        """
+        Compute critic loss.
+
+        Args:
+            y_pred_real: Critic output for real images.
+            y_pred_fake: Critic output for fake images.
+        """
+
+        y_fake = torch.zeros((y_pred_fake.size(0), 1))
+        y_real = torch.ones((y_pred_real.size(0), 1))
 
         y_fake = y_fake.to(y_pred_fake.device)
         y_real = y_real.to(y_pred_real.device)
@@ -83,130 +91,64 @@ class RelativisticBCELoss(Module):
 
         return loss
 
-
-class WassersteinLoss(Module):
-    """
-    Wasserstein loss with gradient penalty for generative adversarial network training.
-    """
-
-    def __init__(self, critic: Bouncer, penalty_lambda: float):
-        super().__init__()
-
-        assert penalty_lambda > 0.0, "Penalty lambda must be positive."
-
-        self.critic = critic
-        self.penalty_lambda = penalty_lambda
-        self.gradient_penalty = torch.tensor(0.0)
-
-    def compute_gradient_penalty(self, u_pred_sr: Tensor, y_orig: Tensor) -> Tensor:
+    def forward_upscaler(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
         """
-        Compute gradient penalty for Lipschitz constraint enforcement.
+        Compute generator loss.
 
         Args:
-            y_orig: Original high-resolution images.
-            u_pred_sr: Super-resolved images from the upscaler.
-
-        Returns:
-            Gradient penalty tensor.
-        """
-
-        assert (
-            u_pred_sr.shape == y_orig.shape
-        ), "Input tensors must have the same shape."
-
-        # Uniform random interpolation.
-        alpha = torch.rand(y_orig.size(0), 1, 1, 1, device=y_orig.device)
-
-        interpolated = alpha * y_orig + (1 - alpha) * u_pred_sr
-
-        interpolated.requires_grad_(True)
-
-        _, _, _, _, d_interpolated = self.critic.forward(interpolated)
-
-        gradients = torch.autograd.grad(
-            outputs=d_interpolated,
-            inputs=interpolated,
-            grad_outputs=torch.ones_like(d_interpolated),
-            create_graph=True,
-        )
-
-        penalty = ((gradients[0].norm(dim=1) - 1) ** 2).mean()
-
-        return self.penalty_lambda * penalty
-
-    def critic_loss(
-        self,
-        y_pred_fake: Tensor,
-        y_pred_real: Tensor,
-        u_pred_sr: Tensor,
-        y_orig: Tensor,
-        compute_penalty: bool,
-    ) -> Tensor:
-        """
-        Compute critic loss: maximize E[D(real)] - E[D(fake)] + gradient penalty.
-
-        Args:
-            y_pred_real: Critic output for real images.
             y_pred_fake: Critic output for fake images.
-            y_orig: Original high-resolution images.
-            u_pred_sr: Super-resolved images from the upscaler.
-            compute_penalty: Whether to compute gradient penalty (default: True).
-
-        Returns:
-            Combined Wasserstein loss with gradient penalty.
+            y_pred_real: Critic output for real images.
         """
 
-        loss = torch.mean(y_pred_fake) - torch.mean(y_pred_real)
+        y = torch.ones((y_pred_fake.size(0), 1))
 
-        if compute_penalty:
-            gradient_penalty = self.compute_gradient_penalty(u_pred_sr, y_orig)
+        y = y.to(y_pred_fake.device)
 
-            self.gradient_penalty = gradient_penalty.detach()
-        else:
-            gradient_penalty = self.gradient_penalty
+        y_pred = y_pred_fake - y_pred_real.mean()
 
-        loss = loss + gradient_penalty
+        loss = self.bce.forward(y_pred, y)
 
         return loss
 
-    def upscaler_loss(self, y_pred_fake: Tensor) -> Tensor:
+
+class R1GradientPenalty(Module):
+    """
+    R1 regularization penalty for generative adversarial network training that penalizes the
+    gradient of the critic's output with respect to real images.
+    """
+
+    def __init__(self, gamma: float = 1.0):
+        super().__init__()
+
+        self.gamma = gamma
+
+    def forward(self, y_pred_real: Tensor, x_real: Tensor) -> Tensor:
         """
-        Compute generator loss: minimize -E[D(fake)].
+        Compute R1 regularization penalty.
 
         Args:
-            y_pred_fake: Critic output for fake images.
-
-        Returns:
-            Generator adversarial loss.
+            y_pred_real: Critic output for real images.
+            x_real: Real images corresponding to y_pred_real.
         """
 
-        return -torch.mean(y_pred_fake)
+        grad_outputs = torch.ones_like(y_pred_real)
 
+        gradients = torch.autograd.grad(
+            outputs=y_pred_real,
+            inputs=x_real,
+            grad_outputs=grad_outputs,
+        )[0]
 
-class UnbalancedMultitaskLoss(Module):
-    def __init__(self):
-        super().__init__()
+        gradients = gradients.view(gradients.size(0), -1)
 
-    def forward(self, losses: Tensor) -> Tensor:
-        combined_loss = losses.sum()
+        norms = gradients.norm(2, dim=1).square().mean()
 
-        return combined_loss
+        penalty = 0.5 * self.gamma * norms
+
+        return penalty
+
 
 class BalancedMultitaskLoss(Module):
-    """A dynamic multitask loss weighting where each task contributes equally."""
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, losses: Tensor) -> Tensor:
-        balanced_losses = losses / losses.detach()
-
-        combined_loss = balanced_losses.sum()
-
-        return combined_loss
-    
-
-class NormalizedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 
     def __init__(self, epsilon: float = 1e-8):
@@ -215,14 +157,14 @@ class NormalizedMultitaskLoss(Module):
         self.epsilon = epsilon
 
     def forward(self, losses: Tensor) -> Tensor:
-        l2_norm = torch.norm(losses.detach(), p=2)
+        epsilon = torch.full_like(losses, self.epsilon)
 
-        # Prevent division by zero.
-        l2_norm = torch.clamp(l2_norm, min=self.epsilon)
+        # Prevent division by zero by replacing with epsilon.
+        losses = torch.where(losses == 0.0, epsilon, losses)
 
-        normalized_losses = losses / l2_norm
+        balanced_losses = losses / losses.detach()
 
-        combined_loss = normalized_losses.sum()
+        combined_loss = balanced_losses.sum()
 
         return combined_loss
 

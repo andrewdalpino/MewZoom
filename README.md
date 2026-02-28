@@ -407,3 +407,4 @@ python test-compare.py --checkpoint_path="./checkpoints/fine-tuned.pt" --image_p
 >- T. Miyato, et al. Spectral Normalization for Generative Adversarial Networks, ICLR, 2018.
 >- E. Perez, et. al. FiLM: Visual Reasoning with a General Conditioning Layer, Association for the Advancement of Artificial Intelligence, 2018.
 >- A. Kendall, et. al. Multi-task Learning Using Uncertainty to Weigh Losses for Scene Geomtery and Semantics, 2018.
+>- L. Mescheder, et al. Which Training Methods for GANs do actually Converge?, PMLR 80, 2018.

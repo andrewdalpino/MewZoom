@@ -33,12 +33,12 @@ class GaussianBlur(Transform):
 
         return {"sigma": sigma}
 
-    def transform(self, x: Any, params: dict[str, Any]) -> Any:
+    def transform(self, inpt: Any, params: dict[str, Any]) -> Any:
         sigma = params["sigma"]
 
         kernel_size = 2 * int(3 * sigma) + 1
 
-        out = gaussian_blur(x, kernel_size, [sigma, sigma])
+        out = gaussian_blur(inpt, [kernel_size, kernel_size], [sigma, sigma])
 
         return out, sigma
 
@@ -48,11 +48,12 @@ class GaussianNoise(Transform):
     A transform that adds Gaussian-distributed noise to an image.
     """
 
-    def __init__(self, min_sigma: float, max_sigma: float):
+    def __init__(self, min_sigma: float, max_sigma: float, clip: bool):
         """
         Args:
             min_sigma (float): Minimum standard deviation of the Gaussian noise to be added.
             max_sigma (float): Maximum standard deviation of the Gaussian noise to be added.
+            clip (bool): Whether to clip the output to [0, 1].
         """
 
         super().__init__()
@@ -64,16 +65,17 @@ class GaussianNoise(Transform):
 
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
+        self.clip = clip
 
     def make_params(self, flat_inputs: list[Any]) -> dict[str, Any]:
         sigma = random.uniform(self.min_sigma, self.max_sigma)
 
         return {"sigma": sigma}
 
-    def transform(self, x: Any, params: dict[str, Any]) -> Any:
+    def transform(self, inpt: Any, params: dict[str, Any]) -> Any:
         sigma = params["sigma"]
 
-        out = gaussian_noise(x, mean=0, sigma=sigma, clip=True)
+        out = gaussian_noise(inpt, mean=0, sigma=sigma, clip=self.clip)
 
         return out, sigma
 
@@ -112,11 +114,11 @@ class JPEGCompression(Transform):
 
         return {"compression": compression}
 
-    def transform(self, x: Any, params: dict[str, Any]) -> Any:
+    def transform(self, inpt: Any, params: dict[str, Any]) -> Any:
         compression = params["compression"]
 
         quality = int(100 * (1 - compression))
 
-        out = jpeg(x, quality)
+        out = jpeg(inpt, quality)
 
         return out, compression

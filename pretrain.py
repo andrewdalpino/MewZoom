@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.nn import MSELoss
 from torch.nn.utils import clip_grad_norm_
-from torch.optim import AdamW
+from torch.optim import AdamW, SGD
 from torch.amp.autocast_mode import autocast
 from torch.cuda import is_available as cuda_is_available, is_bf16_supported
 from torch.backends.mps import is_available as mps_is_available
@@ -61,8 +61,9 @@ def main():
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
     parser.add_argument("--num_epochs", default=100, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
-    parser.add_argument("--max_gradient_norm", default=2.0, type=float)
+    parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--max_gradient_norm", default=1.0, type=float)
+    parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
     parser.add_argument("--primary_layers", default=4, type=int)
     parser.add_argument("--secondary_channels", default=96, type=int)
@@ -74,7 +75,7 @@ def main():
     parser.add_argument("--hidden_ratio", default=2, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
-    parser.add_argument("--checkpoint_interval", default=2, type=int)
+    parser.add_argument("--checkpoint_interval", default=10, type=int)
     parser.add_argument(
         "--checkpoint_path", default="./checkpoints/checkpoint.pt", type=str
     )
@@ -87,11 +88,6 @@ def main():
 
     if args.batch_size < 1:
         raise ValueError(f"Batch size must be greater than 0, {args.batch_size} given.")
-
-    if args.upscaler_learning_rate < 0:
-        raise ValueError(
-            f"Learning rate must be a positive value, {args.learning_rate} given."
-        )
 
     if args.num_epochs < 1:
         raise ValueError(f"Must train for at least 1 epoch, {args.num_epochs} given.")
@@ -204,6 +200,10 @@ def main():
 
     upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
 
+    combined_loss_optimizer = SGD(
+        combined_loss.parameters(), lr=args.combined_loss_learning_rate
+    )
+
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
     ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
     vif_metric = VisualInformationFidelity().to(args.device)
@@ -217,6 +217,9 @@ def main():
 
         upscaler.load_state_dict(checkpoint["upscaler"])
         upscaler_optimizer.load_state_dict(checkpoint["upscaler_optimizer"])
+
+        combined_loss.load_state_dict(checkpoint["combined_loss"])
+        combined_loss_optimizer.load_state_dict(checkpoint["combined_loss_optimizer"])
 
         starting_epoch += checkpoint["epoch"]
 
@@ -232,6 +235,9 @@ def main():
         total_pixel_l2_loss, total_vgg22_loss, total_vgg54_loss = 0.0, 0.0, 0.0
         total_degradation_loss, total_gradient_norm = 0.0, 0.0
         total_batches, total_steps = 0, 0
+
+        upscaler_optimizer.zero_grad()
+        combined_loss_optimizer.zero_grad()
 
         for step, (x, y_orig, y_deg) in enumerate(
             tqdm(train_loader, desc=f"Epoch {epoch}", leave=False), start=1
@@ -261,8 +267,10 @@ def main():
                 norm = clip_grad_norm_(upscaler.parameters(), args.max_gradient_norm)
 
                 upscaler_optimizer.step()
+                combined_loss_optimizer.step()
 
                 upscaler_optimizer.zero_grad()
+                combined_loss_optimizer.zero_grad()
 
                 total_gradient_norm += norm.item()
 
@@ -281,11 +289,17 @@ def main():
         average_degradation_loss = total_degradation_loss / total_batches
         average_gradient_norm = total_gradient_norm / total_steps
 
+        loss_weights = combined_loss.loss_weights.detach().cpu().numpy()
+
         logger.add_scalar("Pixel L2", average_pixel_l2_loss, epoch)
         logger.add_scalar("VGG22 L2", average_vgg22_loss, epoch)
         logger.add_scalar("VGG54 L2", average_vgg54_loss, epoch)
         logger.add_scalar("Degradation L2", average_degradation_loss, epoch)
         logger.add_scalar("Gradient Norm", average_gradient_norm, epoch)
+        logger.add_scalar("Pixel L2 Weight", loss_weights[0], epoch)
+        logger.add_scalar("VGG22 L2 Weight", loss_weights[1], epoch)
+        logger.add_scalar("VGG54 L2 Weight", loss_weights[2], epoch)
+        logger.add_scalar("Degradation L2 Weight", loss_weights[3], epoch)
 
         print(
             f"Epoch {epoch}:",
@@ -293,7 +307,7 @@ def main():
             f"VGG22 L2: {average_vgg22_loss:.4},",
             f"VGG54 L2: {average_vgg54_loss:.4},",
             f"Degradation L2: {average_degradation_loss:.4},",
-            f"Gradient Norm: {average_gradient_norm:.4}",
+            f"Gradient Norm: {average_gradient_norm:.4},",
         )
 
         if epoch % args.eval_interval == 0:
@@ -335,6 +349,8 @@ def main():
                 "upscaler_args": upscaler_args,
                 "upscaler": upscaler.state_dict(),
                 "upscaler_optimizer": upscaler_optimizer.state_dict(),
+                "combined_loss": combined_loss.state_dict(),
+                "combined_loss_optimizer": combined_loss_optimizer.state_dict(),
                 "degradation_features": training.num_degradations,
             }
 

@@ -2,7 +2,7 @@ import torch
 
 from torch import Tensor
 
-from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter, Sequential
+from torch.nn import Module, MSELoss, BCEWithLogitsLoss, Parameter, Sequential, Buffer
 
 from torchvision.models import vgg19, VGG19_Weights, VGG
 
@@ -146,18 +146,23 @@ class R1GradientPenalty(Module):
 class BalancedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 
-    def __init__(self, epsilon: float):
+    def __init__(self, num_losses: int, epsilon: float):
         super().__init__()
 
+        assert num_losses > 0, "Number of losses must be positive."
         assert epsilon > 0.0, "Epsilon must be positive."
 
-        self.epsilon = epsilon
+        self.epsilon = Buffer(torch.full((num_losses,), epsilon))
+
+        self.num_losses = num_losses
 
     def forward(self, losses: Tensor) -> Tensor:
-        epsilon = torch.full_like(losses, self.epsilon)
+        assert (
+            losses.size(0) == self.num_losses
+        ), "Number of losses must match number of tasks."
 
         # Prevent division by zero by replacing with epsilon.
-        losses = torch.where(losses == 0.0, epsilon, losses)
+        losses = torch.where(losses == 0.0, self.epsilon, losses)
 
         balanced_losses = losses / losses.detach()
 
@@ -210,9 +215,8 @@ class AdaptiveMultitaskLoss(Module):
 
         weighted_losses = 0.5 * self.loss_weights * losses
 
-        # Regularization term to prevent task weight collapse.
-        weighted_losses += self.log_sigmas
+        regularized_losses = weighted_losses + self.log_sigmas
 
-        combined_loss = weighted_losses.sum()
+        combined_loss = regularized_losses.sum()
 
         return combined_loss

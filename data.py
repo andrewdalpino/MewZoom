@@ -46,19 +46,13 @@ class ImageFolder(Dataset):
         min_compression: float,
         max_compression: float,
     ):
-        if target_resolution <= 0:
-            raise ValueError(
-                f"Target resolution must be positive, {target_resolution} given."
-            )
+        assert (
+            target_resolution > 0
+        ), f"Target resolution must be greater than 0, {target_resolution} given."
 
-        if min_gaussian_blur == max_gaussian_blur:
-            raise ValueError("Min and max Gaussian blur cannot be equal.")
-
-        if min_gaussian_noise == max_gaussian_noise:
-            raise ValueError("Min and max Gaussian noise cannot be equal.")
-
-        if min_compression == max_compression:
-            raise ValueError("Min and max compression cannot be equal.")
+        assert (
+            upscale_ratio > 0
+        ), f"Upscale ratio must be greater than 0, {upscale_ratio} given."
 
         image_paths = []
         dropped = 0
@@ -87,7 +81,9 @@ class ImageFolder(Dataset):
 
         blur_transform = GaussianBlur(min_gaussian_blur, max_gaussian_blur)
 
-        gaussian_noise_transform = GaussianNoise(min_gaussian_noise, max_gaussian_noise)
+        gaussian_noise_transform = GaussianNoise(
+            min_gaussian_noise, max_gaussian_noise, clip=True
+        )
 
         degraded_resolution = target_resolution // upscale_ratio
 
@@ -144,19 +140,19 @@ class ImageFolder(Dataset):
         if self.pre_transform:
             image = self.pre_transform.forward(image)
 
-        x, blur_sigma = self.blur_transform.forward(image)
-        x, noise_sigma = self.gaussian_noise_transform.forward(x)
+        x, gaussian_blur = self.blur_transform.forward(image)
+        x, gaussian_noise = self.gaussian_noise_transform.forward(x)
         x = self.resize_transform.forward(x)
         x, jpeg_compression = self.compression_transform.forward(x)
         x = self.to_tensor_transform.forward(x)
 
         y_orig = self.to_tensor_transform.forward(image)
 
-        blur_sigma = (blur_sigma - self.min_gaussian_blur) / (
+        gaussian_blur = (gaussian_blur - self.min_gaussian_blur) / (
             self.max_gaussian_blur - self.min_gaussian_blur
         )
 
-        noise_sigma = (noise_sigma - self.min_gaussian_noise) / (
+        gaussian_noise = (gaussian_noise - self.min_gaussian_noise) / (
             self.max_gaussian_noise - self.min_gaussian_noise
         )
 
@@ -164,7 +160,7 @@ class ImageFolder(Dataset):
             self.max_compression - self.min_compression
         )
 
-        y_deg = torch.tensor([blur_sigma, noise_sigma, jpeg_compression])
+        y_deg = torch.tensor([gaussian_blur, gaussian_noise, jpeg_compression])
 
         return x, y_orig, y_deg
 

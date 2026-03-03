@@ -20,7 +20,6 @@ from src.ultrazoom.model import (
     FeatureDetector,
     DetectorBlock,
     DepthwiseSeparableConv2d,
-    AdaptiveResidualMix,
 )
 
 
@@ -788,48 +787,6 @@ class TestDepthwiseSeparableConv2d(BaseModelTest):
         self.depthwise_sep.add_spectral_norms()
         self.assertTrue(hasattr(self.depthwise_sep.depthwise, "parametrizations"))
         self.assertTrue(hasattr(self.depthwise_sep.pointwise, "parametrizations"))
-
-
-class TestAdaptiveResidualMix(BaseModelTest):
-    """Tests for the AdaptiveResidualMix class."""
-
-    def setUp(self):
-        super().setUp()
-        self.num_channels = 32
-        self.module = AdaptiveResidualMix(self.num_channels)
-        self.x = torch.rand(self.batch_size, self.num_channels, self.height, self.width)
-        self.z = torch.rand(self.batch_size, self.num_channels, self.height, self.width)
-
-    def test_initialization(self):
-        """Test that the module initializes correctly."""
-        self.assertIsInstance(self.module.conv, torch.nn.Conv2d)
-        self.assertEqual(self.module.conv.in_channels, 2 * self.num_channels)
-        self.assertEqual(self.module.conv.out_channels, 32)
-        self.assertEqual(self.module.conv.kernel_size, (1, 1))
-        self.assertIsInstance(self.module.alpha, torch.nn.Parameter)
-        self.assertIsInstance(self.module.sigmoid, torch.nn.Sigmoid)
-
-    def test_forward_output_shape(self):
-        """Test that forward pass produces correct output shape."""
-        output = self.module.forward(self.x, self.z)
-        self.assertEqual(output.shape, self.x.shape)
-
-    def test_forward_output_values(self):
-        """Test that forward pass produces values in reasonable range."""
-        output = self.module.forward(self.x, self.z)
-        self.assertIsNotNone(output)
-
-    def test_weight_norms(self):
-        """Test that weight norms can be added successfully."""
-        self.module.add_weight_norms()
-        self.assertTrue(hasattr(self.module.conv, "parametrizations"))
-
-    def test_lora_adapters(self):
-        """Test that LoRA adapters can be added successfully."""
-        rank = 4
-        alpha = 8.0
-        self.module.add_lora_adapters(rank, alpha)
-        self.assertTrue(is_parametrized(self.module.conv, "weight"))
 
 
 if __name__ == "__main__":

@@ -500,19 +500,16 @@ class EncoderBlock(Module):
 
         self.convnet = InvertedBottleneck(num_channels, hidden_ratio)
 
-        self.skip = AdaptiveResidualMix(num_channels)
+        self.skip = ResidualConnection()
 
     def initialize_weights(self) -> None:
         self.convnet.initialize_weights()
-        self.skip.initialize_weights()
 
     def add_weight_norms(self) -> None:
         self.convnet.add_weight_norms()
-        self.skip.add_weight_norms()
 
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         self.convnet.add_lora_adapters(rank, alpha)
-        self.skip.add_lora_adapters(rank, alpha)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.convnet.forward(x)
@@ -580,9 +577,9 @@ class Decoder(Module):
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
 
-        self.skip1 = AdaptiveResidualMix(secondary_channels)
-        self.skip2 = AdaptiveResidualMix(tertiary_channels)
-        self.skip3 = AdaptiveResidualMix(quaternary_channels)
+        self.skip1 = ResidualConnection()
+        self.skip2 = ResidualConnection()
+        self.skip3 = ResidualConnection()
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 
@@ -603,10 +600,6 @@ class Decoder(Module):
         self.upsample2.initialize_weights()
         self.upsample3.initialize_weights()
 
-        self.skip1.initialize_weights()
-        self.skip2.initialize_weights()
-        self.skip3.initialize_weights()
-
     def add_weight_norms(self) -> None:
         for layer in self.stage1:
             layer.add_weight_norms()
@@ -624,10 +617,6 @@ class Decoder(Module):
         self.upsample2.add_weight_norms()
         self.upsample3.add_weight_norms()
 
-        self.skip1.add_weight_norms()
-        self.skip2.add_weight_norms()
-        self.skip3.add_weight_norms()
-
     def add_lora_adapters(self, rank: int, alpha: float) -> None:
         for layer in self.stage1:
             layer.add_lora_adapters(rank, alpha)
@@ -644,10 +633,6 @@ class Decoder(Module):
         self.upsample1.add_lora_adapters(rank, alpha)
         self.upsample2.add_lora_adapters(rank, alpha)
         self.upsample3.add_lora_adapters(rank, alpha)
-
-        self.skip1.add_lora_adapters(rank, alpha)
-        self.skip2.add_lora_adapters(rank, alpha)
-        self.skip3.add_lora_adapters(rank, alpha)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -802,56 +787,6 @@ class ResidualConnection(Module):
         return x + z
 
 
-class AdaptiveResidualMix(Module):
-    """
-    A residual connection that adaptively mixes the input with the residual feature maps.
-    """
-
-    def __init__(self, num_channels: int):
-        super().__init__()
-
-        in_channels = 2 * num_channels
-
-        self.conv = Conv2d(in_channels, num_channels, kernel_size=1, bias=False)
-
-        self.alpha = Parameter(torch.tensor(0.0))
-
-        self.sigmoid = Sigmoid()
-
-    def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
-
-        zeros_(self.alpha)
-
-    def add_weight_norms(self) -> None:
-        self.conv = weight_norm(self.conv)
-
-    def add_spectral_norms(self) -> None:
-        self.conv = spectral_norm(self.conv)
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
-
-    def forward(self, x: Tensor, z: Tensor) -> Tensor:
-        xz = torch.cat([x, z], dim=1)
-
-        beta = self.conv.forward(xz)
-        beta = self.sigmoid.forward(beta)
-
-        # Alpha scalar allows learnable identity mapping.
-        alpha = self.sigmoid.forward(self.alpha)
-
-        w = alpha * beta
-
-        z_hat = (1 - w) * x + w * z
-
-        return z_hat
-
-
 class PixelCrush(Module):
     """Downsample the feature maps using strided convolution."""
 
@@ -943,6 +878,43 @@ class SubpixelConv2d(Module):
         return z
 
 
+class QualityAssessor(Module):
+    """A decoder head for estimating the amount of degradation present in the input image."""
+
+    def __init__(self, num_channels: int, num_labels: int):
+        super().__init__()
+
+        assert num_labels > 0, "Number of degradation labels must be greater than 0."
+
+        self.conv = Conv2d(
+            num_channels, num_labels, kernel_size=3, padding=1, bias=False
+        )
+
+        self.pool = AdaptiveAvgPool2d(1)
+
+        self.flatten = Flatten(start_dim=1)
+
+    def initialize_weights(self) -> None:
+        kaiming_uniform_(self.conv.weight)
+
+    def add_weight_norms(self) -> None:
+        self.conv = weight_norm(self.conv)
+
+    def add_lora_adapters(self, rank: int, alpha: float) -> None:
+        register_parametrization(
+            self.conv,
+            "weight",
+            ChannelLoRA(self.conv, rank, alpha),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        z = self.conv.forward(x)
+        z = self.pool.forward(z)
+        z = self.flatten.forward(z)
+
+        return z
+
+
 class SuperResolver(Module):
     """A decoder head for upscaling the input feature maps beyond their original size."""
 
@@ -968,44 +940,6 @@ class SuperResolver(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.upscale.forward(x)
-
-        return z
-
-
-class QualityAssessor(Module):
-    """A decoder head for estimating the amount of degradation present in the input image."""
-
-    def __init__(self, num_channels: int, num_features: int):
-        super().__init__()
-
-        assert (
-            num_features > 0
-        ), "Number of degradation features must be greater than 0."
-
-        self.conv = Conv2d(num_channels, num_features, kernel_size=3, padding=1)
-
-        self.pool = AdaptiveAvgPool2d(1)
-
-        self.flatten = Flatten(start_dim=1)
-
-    def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
-
-    def add_weight_norms(self) -> None:
-        self.conv = weight_norm(self.conv)
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        z = self.conv.forward(x)
-        z = self.pool.forward(z)
-
-        z = self.flatten.forward(z)
 
         return z
 
@@ -1098,7 +1032,6 @@ class Bouncer(Module):
         """Add spectral normalization to the network."""
 
         self.detector.add_spectral_norms()
-
         self.head.add_spectral_norms()
 
     def remove_parameterizations(self) -> None:
@@ -1118,7 +1051,6 @@ class Bouncer(Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, ...]:
         z1, z2, z3, z4 = self.detector.forward(x)
-
         z5 = self.head.forward(z4)
 
         return z1, z2, z3, z4, z5
@@ -1247,7 +1179,7 @@ class DetectorBlock(Module):
 
         self.silu = SiLU()
 
-        self.skip = AdaptiveResidualMix(num_channels)
+        self.skip = ResidualConnection()
 
     def add_spectral_norms(self) -> None:
         self.conv1.add_spectral_norms()

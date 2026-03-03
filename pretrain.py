@@ -58,20 +58,20 @@ def main():
     parser.add_argument("--contrast_jitter", default=0.15, type=float)
     parser.add_argument("--saturation_jitter", default=0.2, type=float)
     parser.add_argument("--hue_jitter", default=0.03, type=float)
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
+    parser.add_argument("--batch_size", default=64, type=int)
+    parser.add_argument("--gradient_accumulation_steps", default=2, type=int)
     parser.add_argument("--num_epochs", default=100, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
-    parser.add_argument("--primary_layers", default=4, type=int)
+    parser.add_argument("--primary_layers", default=6, type=int)
     parser.add_argument("--secondary_channels", default=96, type=int)
-    parser.add_argument("--secondary_layers", default=4, type=int)
+    parser.add_argument("--secondary_layers", default=6, type=int)
     parser.add_argument("--tertiary_channels", default=192, type=int)
-    parser.add_argument("--tertiary_layers", default=4, type=int)
+    parser.add_argument("--tertiary_layers", default=6, type=int)
     parser.add_argument("--quaternary_channels", default=384, type=int)
-    parser.add_argument("--quaternary_layers", default=8, type=int)
+    parser.add_argument("--quaternary_layers", default=6, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
@@ -193,8 +193,6 @@ def main():
     vgg_loss = VGGLoss().to(args.device)
     combined_loss = AdaptiveMultitaskLoss(4).to(args.device)
 
-    vgg_loss = vgg_loss.to(args.device)
-
     print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
     print(f"Perceptual loss function has {vgg_loss.num_params:,} parameters")
 
@@ -307,7 +305,7 @@ def main():
             f"VGG22 L2: {average_vgg22_loss:.4},",
             f"VGG54 L2: {average_vgg54_loss:.4},",
             f"Degradation L2: {average_degradation_loss:.4},",
-            f"Gradient Norm: {average_gradient_norm:.4},",
+            f"Gradient Norm: {average_gradient_norm:.4}",
         )
 
         if epoch % args.eval_interval == 0:

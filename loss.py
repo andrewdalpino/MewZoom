@@ -56,7 +56,7 @@ class VGGLoss(Module):
 
 class RelativisticBCELoss(Module):
     """
-    Relativistic average BCE with logits loss for generative adversarial network training.
+    Relativistic average BCE with logits loss on patches for generative adversarial network training.
     """
 
     def __init__(self):
@@ -73,13 +73,19 @@ class RelativisticBCELoss(Module):
             y_pred_fake: Critic output for fake images.
         """
 
-        y_fake = torch.zeros((y_pred_fake.size(0), 1)).to(y_pred_fake.device)
-        y_real = torch.ones((y_pred_real.size(0), 1)).to(y_pred_real.device)
+        y_pred_fake_patch = y_pred_fake.squeeze(1)  # (B, H, W)
+        y_pred_real_patch = y_pred_real.squeeze(1)  # (B, H, W)
 
-        y_pred_fake_hat = y_pred_fake - y_pred_real.mean()
-        y_pred_real_hat = y_pred_real - y_pred_fake.mean()
+        y_pred_fake_sigma = y_pred_fake_patch.mean(dim=(1, 2), keepdim=True)
+        y_pred_real_sigma = y_pred_real_patch.mean(dim=(1, 2), keepdim=True)
 
-        y_pred = torch.cat((y_pred_fake_hat, y_pred_real_hat))
+        y_pred_fake = y_pred_fake_patch - y_pred_real_sigma
+        y_pred_real = y_pred_real_patch - y_pred_fake_sigma
+
+        y_fake = torch.zeros_like(y_pred_fake)
+        y_real = torch.ones_like(y_pred_real)
+
+        y_pred = torch.cat((y_pred_fake, y_pred_real))
         y = torch.cat((y_fake, y_real))
 
         loss = self.bce.forward(y_pred, y)
@@ -91,13 +97,18 @@ class RelativisticBCELoss(Module):
         Compute generator loss.
 
         Args:
-            y_pred_fake: Critic output for fake images.
+            y_pred_fake: Critic output for fake images.What
             y_pred_real: Critic output for real images.
         """
 
-        y = torch.ones((y_pred_fake.size(0), 1)).to(y_pred_fake.device)
+        y_pred_fake_patch = y_pred_fake.squeeze(1)  # (B, H, W)
+        y_pred_real_patch = y_pred_real.squeeze(1)  # (B, H, W)
 
-        y_pred = y_pred_fake - y_pred_real.mean()
+        y_pred_real_sigma = y_pred_real_patch.mean(dim=(1, 2), keepdim=True)
+
+        y_pred = y_pred_fake_patch - y_pred_real_sigma
+
+        y = torch.ones_like(y_pred)
 
         loss = self.bce.forward(y_pred, y)
 

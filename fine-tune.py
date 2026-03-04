@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
     parser.add_argument("--num_dataset_processes", default=8, type=int)
-    parser.add_argument("--target_resolution", default=512, type=int)
+    parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
     parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
     parser.add_argument("--min_gaussian_noise", default=0.0, type=float)
@@ -55,16 +55,18 @@ def main():
     parser.add_argument("--contrast_jitter", default=0.15, type=float)
     parser.add_argument("--saturation_jitter", default=0.2, type=float)
     parser.add_argument("--hue_jitter", default=0.03, type=float)
-    parser.add_argument("--batch_size", default=4, type=int)
+    parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
     parser.add_argument("--upscaler_learning_rate", default=5e-5, type=float)
+    parser.add_argument("--upscaler_momentum_decay", default=0.5, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=1e-5, type=float)
+    parser.add_argument("--critic_learning_rate", default=5e-6, type=float)
+    parser.add_argument("--critic_momentum_decay", default=0.5, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--r1_penalty_gamma", default=2.0, type=float)
+    parser.add_argument("--r1_penalty_gamma", default=1.0, type=float)
     parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=2, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -202,8 +204,17 @@ def main():
     r1_penalty = R1GradientPenalty(gamma=args.r1_penalty_gamma)
     combined_loss = BalancedMultitaskLoss(4, args.combined_loss_epsilon).to(args.device)
 
-    upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
-    critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate)
+    upscaler_optimizer = AdamW(
+        upscaler.parameters(),
+        lr=args.upscaler_learning_rate,
+        betas=(1.0 - args.upscaler_momentum_decay, 0.999),
+    )
+
+    critic_optimizer = AdamW(
+        critic.parameters(),
+        lr=args.critic_learning_rate,
+        betas=(1.0 - args.critic_momentum_decay, 0.999),
+    )
 
     starting_epoch = 1
 

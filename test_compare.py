@@ -50,6 +50,7 @@ def main():
     model.load_state_dict(state_dict)
 
     model.remove_parameterizations()
+    model.remove_qa_head()
 
     model = model.to(args.device)
 

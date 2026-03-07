@@ -7,8 +7,8 @@ from torch.nn import Module
 from torchmetrics.classification import BinaryPrecision, BinaryRecall
 
 
-class RelativisticF1Score(Module):
-    """Computes the F1 score on patches using relativistic mean predictions."""
+class PatchF1Score(Module):
+    """Computes the F1 score on patches."""
 
     def __init__(self):
         super().__init__()
@@ -22,28 +22,21 @@ class RelativisticF1Score(Module):
             y_pred_fake: (B, 1, H, W) - patch predictions for fake images
             y_pred_real: (B, 1, H, W) - patch predictions for real images
         """
-        y_pred_fake_flat = y_pred_fake.squeeze(1).flatten(start_dim=1)
-        y_pred_real_flat = y_pred_real.squeeze(1).flatten(start_dim=1)
 
-        y_pred_real_mean = y_pred_real_flat.mean(dim=1, keepdim=True)
-        y_pred_fake_mean = y_pred_fake_flat.mean(dim=1, keepdim=True)
+        y_pred_fake_hat = y_pred_fake.flatten()
+        y_pred_real_hat = y_pred_real.flatten()
 
-        y_pred_fake_hat = y_pred_fake_flat - y_pred_real_mean
-        y_pred_real_hat = y_pred_real_flat - y_pred_fake_mean
-
-        y_pred_fake_hat = y_pred_fake_hat.flatten()
-        y_pred_real_hat = y_pred_real_hat.flatten()
+        y_pred = torch.cat([y_pred_fake_hat, y_pred_real_hat], dim=0)
 
         num_patches = y_pred_fake_hat.shape[0]
 
         y_fake = torch.zeros(num_patches, device=y_pred_fake.device)
         y_real = torch.ones(num_patches, device=y_pred_real.device)
 
-        y_pred = torch.cat([y_pred_fake_hat, y_pred_real_hat], dim=0)
-        labels = torch.cat([y_fake, y_real], dim=0)
+        y = torch.cat([y_fake, y_real], dim=0)
 
-        self.precision_metric.update(y_pred, labels)
-        self.recall_metric.update(y_pred, labels)
+        self.precision_metric.update(y_pred, y)
+        self.recall_metric.update(y_pred, y)
 
     def compute(self) -> tuple[Tensor, Tensor, Tensor]:
         precision = self.precision_metric.compute()

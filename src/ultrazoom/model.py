@@ -203,8 +203,8 @@ class FanOutProjection(Module):
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
 
-    def add_spectral_norms(self) -> None:
-        self.conv = spectral_norm(self.conv)
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv.forward(x)
@@ -697,8 +697,8 @@ class PixelCrush(Module):
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
 
-    def add_spectral_norms(self) -> None:
-        self.conv = spectral_norm(self.conv)
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.conv(x)
@@ -890,12 +890,12 @@ class Bouncer(Module):
     def num_trainable_params(self) -> int:
         return sum(param.numel() for param in self.parameters() if param.requires_grad)
 
-    def add_spectral_norms(self) -> None:
+    def add_spectral_norms(self, num_iterations: int) -> None:
         """Add spectral normalization to the network."""
 
-        self.stem.add_spectral_norms()
-        self.detector.add_spectral_norms()
-        self.head.add_spectral_norms()
+        self.stem.add_spectral_norms(num_iterations)
+        self.detector.add_spectral_norms(num_iterations)
+        self.head.add_spectral_norms(num_iterations)
 
     def remove_parameterizations(self) -> None:
         """Remove all parameterizations."""
@@ -993,14 +993,14 @@ class FeatureDetector(Module):
 
         self.checkpoint = lambda layer, x: layer(x)
 
-    def add_spectral_norms(self) -> None:
+    def add_spectral_norms(self, num_iterations: int) -> None:
         for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
             for layer in stage:
-                layer.add_spectral_norms()
+                layer.add_spectral_norms(num_iterations)
 
-        self.downsample1.add_spectral_norms()
-        self.downsample2.add_spectral_norms()
-        self.downsample3.add_spectral_norms()
+        self.downsample1.add_spectral_norms(num_iterations)
+        self.downsample2.add_spectral_norms(num_iterations)
+        self.downsample3.add_spectral_norms(num_iterations)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -1046,10 +1046,10 @@ class DetectorBlock(Module):
 
         self.skip = ResidualConnection()
 
-    def add_spectral_norms(self) -> None:
-        self.conv1.add_spectral_norms()
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv1.add_spectral_norms(num_iterations)
 
-        self.conv2 = spectral_norm(self.conv2)
+        self.conv2 = spectral_norm(self.conv2, n_power_iterations=num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv1.forward(x)
@@ -1085,9 +1085,13 @@ class DepthwiseSeparableConv2d(Module):
 
         self.pointwise = Conv2d(in_channels, out_channels, kernel_size=1)
 
-    def add_spectral_norms(self) -> None:
-        self.depthwise = spectral_norm(self.depthwise)
-        self.pointwise = spectral_norm(self.pointwise)
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.depthwise = spectral_norm(
+            self.depthwise, n_power_iterations=num_iterations
+        )
+        self.pointwise = spectral_norm(
+            self.pointwise, n_power_iterations=num_iterations
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.depthwise.forward(x)
@@ -1109,10 +1113,10 @@ class PatchDiscriminator(Module):
 
         self.conv = Conv2d(num_channels, 1, kernel_size=1, bias=False)
 
-    def add_spectral_norms(self) -> None:
-        self.downsample.add_spectral_norms()
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.downsample.add_spectral_norms(num_iterations)
 
-        self.conv = spectral_norm(self.conv)
+        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.downsample.forward(x)

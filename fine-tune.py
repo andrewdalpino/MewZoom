@@ -32,7 +32,7 @@ from torchmetrics.image import (
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom, Bouncer
 from loss import RelativisticBCELoss, BalancedMultitaskLoss
-from metrics import RelativisticF1Score
+from metrics import PatchF1Score
 
 from tqdm import tqdm
 
@@ -57,15 +57,16 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=1e-5, type=float)
-    parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
+    parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--upscaler_momentum_decay", default=0.5, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-5, type=float)
+    parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
     parser.add_argument("--critic_momentum_decay", default=0.5, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
+    parser.add_argument("--spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--num_epochs", default=30, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=3, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -194,7 +195,7 @@ def main():
 
     critic = Bouncer.from_preconfigured(**critic_args)
 
-    critic.add_spectral_norms()
+    critic.add_spectral_norms(args.spectral_norm_iterations)
 
     critic = critic.to(args.device)
 
@@ -241,7 +242,7 @@ def main():
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
     ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
     vif_metric = VisualInformationFidelity().to(args.device)
-    f1_metric = RelativisticF1Score().to(args.device)
+    f1_metric = PatchF1Score().to(args.device)
 
     print("Fine-tuning ...")
 

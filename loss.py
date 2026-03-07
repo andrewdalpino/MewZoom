@@ -116,47 +116,6 @@ class RelativisticBCELoss(Module):
         return loss
 
 
-class R1GradientPenalty(Module):
-    """
-    R1 regularization penalty for generative adversarial network training that penalizes the
-    gradient of the critic's output with respect to real images.
-    """
-
-    def __init__(self, gamma: float):
-        super().__init__()
-
-        assert gamma >= 0.0, "Gamma must be non-negative."
-
-        self.gamma = torch.tensor(gamma)
-
-    def forward(self, y_pred_real: Tensor, y_real: Tensor) -> Tensor:
-        """
-        Compute R1 regularization penalty.
-
-        Args:
-            y_pred_real: Critic output for real images.
-            y_real: Real images corresponding to y_pred_real.
-        """
-
-        grad_outputs = torch.ones_like(y_pred_real)
-
-        gradients = torch.autograd.grad(
-            outputs=y_pred_real,
-            inputs=y_real,
-            grad_outputs=grad_outputs,
-        )[0]
-
-        num_patches = y_pred_real.size(1) * y_pred_real.size(2)
-
-        gradients = gradients.view(gradients.size(0), num_patches, -1)
-
-        norms = gradients.norm(2, dim=2).square().mean()
-
-        penalty = 0.5 * self.gamma * norms
-
-        return penalty
-
-
 class BalancedMultitaskLoss(Module):
     """A dynamic multitask loss weighting where each task contributes equally."""
 

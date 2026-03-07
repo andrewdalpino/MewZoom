@@ -61,7 +61,7 @@ def main():
     parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_learning_rate", default=5e-5, type=float)
-    parser.add_argument("--critic_momentum_decay", default=0.2, type=float)
+    parser.add_argument("--critic_momentum_decay", default=0.5, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)

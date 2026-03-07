@@ -30,9 +30,6 @@ def main():
     )
     parser.add_argument("--lr_images_path", default="./dataset/validate/lr", type=str)
     parser.add_argument("--hr_images_path", default="./dataset/validate/hr", type=str)
-    parser.add_argument("--gaussian_blur", default=0.1, type=float)
-    parser.add_argument("--gaussian_noise", default=0.1, type=float)
-    parser.add_argument("--jpeg_compression", default=0.1, type=float)
     parser.add_argument("--device", default="cpu", type=str)
 
     args = parser.parse_args()
@@ -52,6 +49,7 @@ def main():
 
     model = MewZoom(**checkpoint["model_args"])
 
+    model.add_qa_head(checkpoint["degradation_features"])
     model.add_weight_norms()
 
     state_dict = checkpoint["model"]
@@ -63,6 +61,7 @@ def main():
     model.load_state_dict(state_dict)
 
     model.remove_parameterizations()
+    model.remove_qa_head()
 
     model = model.to(args.device)
 
@@ -70,59 +69,25 @@ def main():
 
     print("Model checkpoint loaded successfully")
 
-    c_hat = (
-        ControlVector(
-            gaussian_blur=args.gaussian_blur,
-            gaussian_noise=args.gaussian_noise,
-            jpeg_compression=args.jpeg_compression,
-        )
-        .to_tensor()
-        .to(args.device)
-        .unsqueeze(0)
-    )
-
-    bicubic_psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
-    bicubic_ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
-    bicubic_vif_metric = VisualInformationFidelity().to(args.device)
-
-    enhanced_psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
-    enhanced_ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
-    enhanced_vif_metric = VisualInformationFidelity().to(args.device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
+    ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
+    vif_metric = VisualInformationFidelity().to(args.device)
 
     for x, y in tqdm(dataloader, desc="Testing", leave=False):
         x = x.to(args.device, non_blocking=True)
-        c = c_hat.repeat(x.size(0), 1)
         y = y.to(args.device, non_blocking=True)
 
-        u_pred, u_bicubic = model.test_compare(x, c)
+        y_pred = model.upscale(x)
 
-        bicubic_psnr_metric.update(u_bicubic, y)
-        bicubic_ssim_metric.update(u_bicubic, y)
-        bicubic_vif_metric.update(u_bicubic, y)
+        psnr_metric.update(y_pred, y)
+        ssim_metric.update(y_pred, y)
+        vif_metric.update(y_pred, y)
 
-        enhanced_psnr_metric.update(u_pred, y)
-        enhanced_ssim_metric.update(u_pred, y)
-        enhanced_vif_metric.update(u_pred, y)
+    psnr = psnr_metric.compute()
+    ssim = ssim_metric.compute()
+    vif = vif_metric.compute()
 
-    bicubic_psnr = bicubic_psnr_metric.compute()
-    bicubic_ssim = bicubic_ssim_metric.compute()
-    bicubic_vif = bicubic_vif_metric.compute()
-
-    enhanced_psnr = enhanced_psnr_metric.compute()
-    enhanced_ssim = enhanced_ssim_metric.compute()
-    enhanced_vif = enhanced_vif_metric.compute()
-
-    print(
-        f"Bicubic PSNR: {bicubic_psnr:.5f}, "
-        f"Bicubic SSIM: {bicubic_ssim:.5f}, "
-        f"Bicubic VIF: {bicubic_vif:.5f}"
-    )
-
-    print(
-        f"Enhanced PSNR: {enhanced_psnr:.5f}, "
-        f"Enhanced SSIM: {enhanced_ssim:.5f}, "
-        f"Enhanced VIF: {enhanced_vif:.5f}"
-    )
+    print(f"PSNR: {psnr:.5f}, SSIM: {ssim:.5f}, VIF: {vif:.5f}")
 
 
 if __name__ == "__main__":

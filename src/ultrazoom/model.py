@@ -1,4 +1,4 @@
-from math import sqrt, floor, ceil
+from math import floor, ceil
 
 from typing import Self
 
@@ -18,17 +18,12 @@ from torch.nn import (
     AdaptiveAvgPool2d,
     Identity,
     Flatten,
-    Parameter,
 )
 
 from torch.nn.init import kaiming_uniform_
 from torch.nn.functional import pad
 
-from torch.nn.utils.parametrize import (
-    register_parametrization,
-    is_parametrized,
-    remove_parametrizations,
-)
+from torch.nn.utils.parametrize import is_parametrized, remove_parametrizations
 
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
@@ -124,13 +119,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
         self.unet.add_weight_norms()
         self.head.add_weight_norms()
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        """Add LoRA adapters to all layers in the network."""
-
-        self.stem.add_lora_adapters(rank, alpha)
-        self.unet.add_lora_adapters(rank, alpha)
-        self.head.add_lora_adapters(rank, alpha)
-
     def remove_parameterizations(self) -> None:
         """Remove all network parameterizations."""
 
@@ -218,13 +206,6 @@ class FanOutProjection(Module):
     def add_spectral_norms(self) -> None:
         self.conv = spectral_norm(self.conv)
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
-
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv.forward(x)
 
@@ -299,10 +280,6 @@ class UNet(Module):
     def add_weight_norms(self) -> None:
         self.encoder.add_weight_norms()
         self.decoder.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        self.encoder.add_lora_adapters(rank, alpha)
-        self.decoder.add_lora_adapters(rank, alpha)
 
     def enable_activation_checkpointing(self) -> None:
         self.encoder.enable_activation_checkpointing()
@@ -383,18 +360,16 @@ class Encoder(Module):
 
         self.quaternary_channels = quaternary_channels
 
+    def add_qa_head(self, num_features: int) -> None:
+        self.qa_head = QualityAssessor(self.quaternary_channels, num_features)
+
+    def remove_qa_head(self) -> None:
+        self.qa_head = Identity()
+
     def initialize_weights(self) -> None:
-        for layer in self.stage1:
-            layer.initialize_weights()
-
-        for layer in self.stage2:
-            layer.initialize_weights()
-
-        for layer in self.stage3:
-            layer.initialize_weights()
-
-        for layer in self.stage4:
-            layer.initialize_weights()
+        for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
+            for layer in stage:
+                layer.initialize_weights()
 
         self.downsample1.initialize_weights()
         self.downsample2.initialize_weights()
@@ -403,24 +378,10 @@ class Encoder(Module):
         if isinstance(self.qa_head, QualityAssessor):
             self.qa_head.initialize_weights()
 
-    def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = QualityAssessor(self.quaternary_channels, num_features)
-
-    def remove_qa_head(self) -> None:
-        self.qa_head = Identity()
-
     def add_weight_norms(self) -> None:
-        for layer in self.stage1:
-            layer.add_weight_norms()
-
-        for layer in self.stage2:
-            layer.add_weight_norms()
-
-        for layer in self.stage3:
-            layer.add_weight_norms()
-
-        for layer in self.stage4:
-            layer.add_weight_norms()
+        for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
+            for layer in stage:
+                layer.add_weight_norms()
 
         self.downsample1.add_weight_norms()
         self.downsample2.add_weight_norms()
@@ -428,26 +389,6 @@ class Encoder(Module):
 
         if isinstance(self.qa_head, QualityAssessor):
             self.qa_head.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        for layer in self.stage1:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage2:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage3:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage4:
-            layer.add_lora_adapters(rank, alpha)
-
-        self.downsample1.add_lora_adapters(rank, alpha)
-        self.downsample2.add_lora_adapters(rank, alpha)
-        self.downsample3.add_lora_adapters(rank, alpha)
-
-        if isinstance(self.qa_head, QualityAssessor):
-            self.qa_head.add_lora_adapters(rank, alpha)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -496,9 +437,6 @@ class EncoderBlock(Module):
 
     def add_weight_norms(self) -> None:
         self.convnet.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        self.convnet.add_lora_adapters(rank, alpha)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.convnet.forward(x)
@@ -573,55 +511,22 @@ class Decoder(Module):
         self.checkpoint = lambda layer, x: layer.forward(x)
 
     def initialize_weights(self) -> None:
-        for layer in self.stage1:
-            layer.initialize_weights()
-
-        for layer in self.stage2:
-            layer.initialize_weights()
-
-        for layer in self.stage3:
-            layer.initialize_weights()
-
-        for layer in self.stage4:
-            layer.initialize_weights()
+        for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
+            for layer in stage:
+                layer.initialize_weights()
 
         self.upsample1.initialize_weights()
         self.upsample2.initialize_weights()
         self.upsample3.initialize_weights()
 
     def add_weight_norms(self) -> None:
-        for layer in self.stage1:
-            layer.add_weight_norms()
-
-        for layer in self.stage2:
-            layer.add_weight_norms()
-
-        for layer in self.stage3:
-            layer.add_weight_norms()
-
-        for layer in self.stage4:
-            layer.add_weight_norms()
+        for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
+            for layer in stage:
+                layer.add_weight_norms()
 
         self.upsample1.add_weight_norms()
         self.upsample2.add_weight_norms()
         self.upsample3.add_weight_norms()
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        for layer in self.stage1:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage2:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage3:
-            layer.add_lora_adapters(rank, alpha)
-
-        for layer in self.stage4:
-            layer.add_lora_adapters(rank, alpha)
-
-        self.upsample1.add_lora_adapters(rank, alpha)
-        self.upsample2.add_lora_adapters(rank, alpha)
-        self.upsample3.add_lora_adapters(rank, alpha)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -741,19 +646,6 @@ class InvertedBottleneck(Module):
         self.conv1 = weight_norm(self.conv1)
         self.conv2 = weight_norm(self.conv2)
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv1,
-            "weight",
-            ChannelLoRA(self.conv1, rank, alpha),
-        )
-
-        register_parametrization(
-            self.conv2,
-            "weight",
-            ChannelLoRA(self.conv2, rank, alpha),
-        )
-
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv1.forward(x)
         z = self.silu.forward(z)
@@ -808,13 +700,6 @@ class PixelCrush(Module):
     def add_spectral_norms(self) -> None:
         self.conv = spectral_norm(self.conv)
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
-
     def forward(self, x: Tensor) -> Tensor:
         return self.conv(x)
 
@@ -853,13 +738,6 @@ class SubpixelConv2d(Module):
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
-
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv.forward(x)
         z = self.shuffle.forward(z)
@@ -870,13 +748,15 @@ class SubpixelConv2d(Module):
 class QualityAssessor(Module):
     """A decoder head for estimating the amount of degradation present in the input image."""
 
-    def __init__(self, num_channels: int, num_labels: int):
+    def __init__(self, num_channels: int, num_features: int):
         super().__init__()
 
-        assert num_labels > 0, "Number of degradation labels must be greater than 0."
+        assert (
+            num_features > 0
+        ), "Number of degradation features must be greater than 0."
 
         self.conv = Conv2d(
-            num_channels, num_labels, kernel_size=3, padding=1, bias=False
+            num_channels, num_features, kernel_size=3, padding=1, bias=False
         )
 
         self.pool = AdaptiveAvgPool2d(1)
@@ -888,13 +768,6 @@ class QualityAssessor(Module):
 
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
-
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        register_parametrization(
-            self.conv,
-            "weight",
-            ChannelLoRA(self.conv, rank, alpha),
-        )
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv.forward(x)
@@ -924,43 +797,8 @@ class SuperResolver(Module):
     def add_weight_norms(self) -> None:
         self.upscale.add_weight_norms()
 
-    def add_lora_adapters(self, rank: int, alpha: float) -> None:
-        self.upscale.add_lora_adapters(rank, alpha)
-
     def forward(self, x: Tensor) -> Tensor:
         z = self.upscale.forward(x)
-
-        return z
-
-
-class ChannelLoRA(Module):
-    """Low rank channel decomposition transformation."""
-
-    def __init__(self, layer: Conv2d, rank: int, alpha: float):
-        super().__init__()
-
-        assert rank > 0, "Rank must be greater than 0."
-        assert alpha > 0.0, "Alpha must be greater than 0."
-
-        out_channels, in_channels, h, w = layer.weight.shape
-
-        lora_a = torch.randn(h, w, out_channels, rank) / sqrt(rank)
-        lora_b = torch.zeros(h, w, rank, in_channels)
-
-        self.lora_a = Parameter(lora_a)
-        self.lora_b = Parameter(lora_b)
-
-        self.alpha = alpha
-
-    def forward(self, w: Tensor) -> Tensor:
-        z = self.lora_a @ self.lora_b
-
-        z *= self.alpha
-
-        # Move channels to front to match weight shape.
-        z = z.permute(2, 3, 0, 1)
-
-        z = w + z
 
         return z
 
@@ -1156,17 +994,9 @@ class FeatureDetector(Module):
         self.checkpoint = lambda layer, x: layer(x)
 
     def add_spectral_norms(self) -> None:
-        for layer in self.stage1:
-            layer.add_spectral_norms()
-
-        for layer in self.stage2:
-            layer.add_spectral_norms()
-
-        for layer in self.stage3:
-            layer.add_spectral_norms()
-
-        for layer in self.stage4:
-            layer.add_spectral_norms()
+        for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
+            for layer in stage:
+                layer.add_spectral_norms()
 
         self.downsample1.add_spectral_norms()
         self.downsample2.add_spectral_norms()

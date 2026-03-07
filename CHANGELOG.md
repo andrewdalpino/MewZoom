@@ -4,7 +4,8 @@
 
 - Change name to MewZoom.
 - Now uses a residual encoder-decoder (Unet) architecture.
-- Added adaptive residual mix module.
+- Added QA head.
+- Added patch discriminator.
 
 ## 0.2.1
 

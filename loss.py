@@ -82,10 +82,11 @@ class RelativisticBCELoss(Module):
         y_pred_fake = y_pred_fake_patch - y_pred_real_sigma
         y_pred_real = y_pred_real_patch - y_pred_fake_sigma
 
+        y_pred = torch.cat((y_pred_fake, y_pred_real))
+
         y_fake = torch.zeros_like(y_pred_fake)
         y_real = torch.ones_like(y_pred_real)
 
-        y_pred = torch.cat((y_pred_fake, y_pred_real))
         y = torch.cat((y_fake, y_real))
 
         loss = self.bce.forward(y_pred, y)
@@ -128,26 +129,28 @@ class R1GradientPenalty(Module):
 
         self.gamma = torch.tensor(gamma)
 
-    def forward(self, y_pred_real: Tensor, x_real: Tensor) -> Tensor:
+    def forward(self, y_pred_real: Tensor, y_real: Tensor) -> Tensor:
         """
         Compute R1 regularization penalty.
 
         Args:
             y_pred_real: Critic output for real images.
-            x_real: Real images corresponding to y_pred_real.
+            y_real: Real images corresponding to y_pred_real.
         """
 
         grad_outputs = torch.ones_like(y_pred_real)
 
         gradients = torch.autograd.grad(
             outputs=y_pred_real,
-            inputs=x_real,
+            inputs=y_real,
             grad_outputs=grad_outputs,
         )[0]
 
-        gradients = gradients.view(gradients.size(0), -1)
+        num_patches = y_pred_real.size(1) * y_pred_real.size(2)
 
-        norms = gradients.norm(2, dim=1).square().mean()
+        gradients = gradients.view(gradients.size(0), num_patches, -1)
+
+        norms = gradients.norm(2, dim=2).square().mean()
 
         penalty = 0.5 * self.gamma * norms
 

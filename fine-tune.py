@@ -31,7 +31,7 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom, Bouncer
-from loss import RelativisticBCELoss, R1GradientPenalty, BalancedMultitaskLoss
+from loss import RelativisticBCELoss, BalancedMultitaskLoss
 from metrics import RelativisticF1Score
 
 from tqdm import tqdm
@@ -57,13 +57,12 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=5e-5, type=float)
-    parser.add_argument("--upscaler_momentum_decay", default=0.5, type=float)
+    parser.add_argument("--upscaler_learning_rate", default=1e-5, type=float)
+    parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-6, type=float)
-    parser.add_argument("--critic_momentum_decay", default=0.5, type=float)
+    parser.add_argument("--critic_learning_rate", default=5e-5, type=float)
+    parser.add_argument("--critic_momentum_decay", default=0.2, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--r1_penalty_gamma", default=1.0, type=float)
     parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)
     parser.add_argument("--critic_warmup_epochs", default=1, type=int)
@@ -201,7 +200,6 @@ def main():
 
     l2_loss = MSELoss()
     bce_loss = RelativisticBCELoss()
-    r1_penalty = R1GradientPenalty(gamma=args.r1_penalty_gamma)
     combined_loss = BalancedMultitaskLoss(4, args.combined_loss_epsilon).to(args.device)
 
     upscaler_optimizer = AdamW(
@@ -252,7 +250,7 @@ def main():
 
     for epoch in range(starting_epoch, args.num_epochs + 1):
         total_pixel_l2, total_stage2_l2, total_degradation_l2 = 0.0, 0.0, 0.0
-        total_u_bce, total_c_bce, total_r1_penalty = 0.0, 0.0, 0.0
+        total_u_bce, total_c_bce = 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
         total_upscaler_batches, total_critic_batches = 0, 0
         total_upscaler_steps, total_critic_steps = 0, 0
@@ -274,7 +272,31 @@ def main():
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
 
-                _, z2_real, _, _, c_pred_real = critic.forward(y_orig)
+                _, _, _, _, c_pred_real = critic.forward(y_orig)
+                _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
+
+                c_bce = bce_loss.forward_critic(c_pred_fake, c_pred_real)
+
+                scaled_c_loss = c_bce / args.gradient_accumulation_steps
+
+                scaled_c_loss.backward()
+
+            if update_this_step:
+                c_norm = clip_grad_norm_(
+                    critic.parameters(), args.critic_max_gradient_norm
+                )
+
+                critic_optimizer.step()
+
+                critic_optimizer.zero_grad()
+
+                total_c_gradient_norm += c_norm.item()
+
+                total_critic_steps += 1
+
+            total_c_bce += c_bce.item()
+
+            total_critic_batches += 1
 
             if not is_warmup:
                 with amp_context:
@@ -283,10 +305,11 @@ def main():
                     degradation_l2 = l2_loss.forward(u_pred_deg, y_deg)
 
                     _, z2_fake, _, _, c_pred_fake = critic.forward(u_pred_sr)
+                    _, z2_real, _, _, c_pred_real = critic.forward(y_orig)
 
-                    stage2_l2 = l2_loss.forward(z2_fake, z2_real.detach())
+                    stage2_l2 = l2_loss.forward(z2_fake, z2_real)
 
-                    u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real.detach())
+                    u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real)
 
                     losses = torch.stack([pixel_l2, stage2_l2, degradation_l2, u_bce])
 
@@ -316,42 +339,6 @@ def main():
 
                 total_upscaler_batches += 1
 
-            with amp_context:
-                _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
-
-                c_bce = bce_loss.forward_critic(c_pred_fake, c_pred_real)
-
-                # For R1 penalty, we need y_orig to have gradients.
-                y_orig.requires_grad_(True)
-
-                _, _, _, _, c_pred_real_r1 = critic.forward(y_orig)
-
-                r1 = r1_penalty.forward(c_pred_real_r1, y_orig)
-
-                c_loss = c_bce + r1
-
-                scaled_c_loss = c_loss / args.gradient_accumulation_steps
-
-                scaled_c_loss.backward()
-
-            if update_this_step:
-                c_norm = clip_grad_norm_(
-                    critic.parameters(), args.critic_max_gradient_norm
-                )
-
-                critic_optimizer.step()
-
-                critic_optimizer.zero_grad()
-
-                total_c_gradient_norm += c_norm.item()
-
-                total_critic_steps += 1
-
-            total_c_bce += c_bce.item()
-            total_r1_penalty += r1.item()
-
-            total_critic_batches += 1
-
         # Prevent divide by zero errors when no updates were made to the upscaler this epoch.
         total_upscaler_batches = max(total_upscaler_batches, 1)
         total_upscaler_steps = max(total_upscaler_steps, 1)
@@ -361,7 +348,6 @@ def main():
         average_degradation_l2 = total_degradation_l2 / total_upscaler_batches
         average_u_bce = total_u_bce / total_upscaler_batches
         average_c_bce = total_c_bce / total_critic_batches
-        average_r1_penalty = total_r1_penalty / total_critic_batches
 
         average_u_gradient_norm = total_u_gradient_norm / total_upscaler_steps
         average_c_gradient_norm = total_c_gradient_norm / total_critic_steps
@@ -373,7 +359,6 @@ def main():
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
         logger.add_scalar("Critic BCE", average_c_bce, epoch)
         logger.add_scalar("Critic Norm", average_c_gradient_norm, epoch)
-        logger.add_scalar("R1 Penalty", average_r1_penalty, epoch)
 
         print(
             f"Epoch {epoch}:",
@@ -383,8 +368,7 @@ def main():
             f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",
             f"Critic BCE: {average_c_bce:.5},",
-            f"Critic Norm: {average_c_gradient_norm:.4},",
-            f"R1 Penalty: {average_r1_penalty:.5}",
+            f"Critic Norm: {average_c_gradient_norm:.4}",
         )
 
         if epoch % args.eval_interval == 0:

@@ -6,7 +6,7 @@ from functools import partial
 
 import torch
 
-from torch import Tensor
+from torch import Size, Tensor
 
 from torch.nn import (
     Module,
@@ -36,7 +36,7 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from huggingface_hub import PyTorchModelHubMixin
 
 
-type FeatureMapSize = tuple[int, int] | list[int]
+type FeatureMapSize = Size | tuple[int, int] | list[int]
 
 
 class MewZoom(Module, PyTorchModelHubMixin):
@@ -176,19 +176,6 @@ class MewZoom(Module, PyTorchModelHubMixin):
         z = torch.clamp(z, 0, 1)
 
         return z
-
-    @torch.inference_mode()
-    def predict_degradation(self, x: Tensor) -> Tensor:
-        """
-        Convenience method for predicting degradation features.
-
-        Args:
-            x: Input image tensor of shape (B, 3, H, W).
-        """
-
-        _, z_qa = self.forward(x)
-
-        return z_qa
 
 
 class ONNXModel(Module):
@@ -693,7 +680,7 @@ class Decoder(Module):
 
         z = self.upsample1.forward(z)
 
-        z = self.crop_feature_maps(z, x2.shape[2:])
+        z = self.crop_feature_maps(z, x2.shape[2:4])
 
         z = self.skip1.forward(x2, z)
 
@@ -702,7 +689,7 @@ class Decoder(Module):
 
         z = self.upsample2.forward(z)
 
-        z = self.crop_feature_maps(z, x3.shape[2:])
+        z = self.crop_feature_maps(z, x3.shape[2:4])
 
         z = self.skip2.forward(x3, z)
 
@@ -711,7 +698,7 @@ class Decoder(Module):
 
         z = self.upsample3.forward(z)
 
-        z = self.crop_feature_maps(z, x4.shape[2:])
+        z = self.crop_feature_maps(z, x4.shape[2:4])
 
         z = self.skip3.forward(x4, z)
 
@@ -1098,7 +1085,7 @@ class Bouncer(Module):
 
     @torch.no_grad()
     def predict(self, x: Tensor) -> Tensor:
-        """Return the probability that the input image is real or fake."""
+        """Return the probabilities that patches of the input image are real or fake."""
 
         _, _, _, _, z5 = self.forward(x)
 

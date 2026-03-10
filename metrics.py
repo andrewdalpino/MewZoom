@@ -23,15 +23,13 @@ class PatchF1Score(Module):
             y_pred_real: (B, 1, H, W) - patch predictions for real images
         """
 
-        y_pred_fake_hat = y_pred_fake.flatten()
-        y_pred_real_hat = y_pred_real.flatten()
+        y_pred_fake = y_pred_fake.flatten()  # (B * H * W)
+        y_pred_real = y_pred_real.flatten()  # (B * H * W)
 
-        y_pred = torch.cat([y_pred_fake_hat, y_pred_real_hat], dim=0)
+        y_pred = torch.cat([y_pred_fake, y_pred_real], dim=0)
 
-        num_patches = y_pred_fake_hat.shape[0]
-
-        y_fake = torch.zeros(num_patches, device=y_pred_fake.device)
-        y_real = torch.ones(num_patches, device=y_pred_real.device)
+        y_fake = torch.zeros(y_pred_fake.size(0), device=y_pred_fake.device)
+        y_real = torch.ones(y_pred_real.size(0), device=y_pred_real.device)
 
         y = torch.cat([y_fake, y_real], dim=0)
 

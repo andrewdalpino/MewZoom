@@ -61,13 +61,13 @@ import torch
 from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype, ToPILImage
 
-from ultrazoom.model import MewZoom
+from ultrazoom.model import UltraZoom
 
 
 model_name = "andrewdalpino/MewZoom-2X"
 image_path = "./dataset/bird.png"
 
-model = MewZoom.from_pretrained(model_name)
+model = UltraZoom.from_pretrained(model_name)
 
 image_to_tensor = ToDtype(torch.float32, scale=True)
 tensor_to_pil = ToPILImage()
@@ -99,14 +99,14 @@ import torch
 from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype, ToPILImage
 
-from ultrazoom.model import MewZoom
+from ultrazoom.model import UltraZoom
 from ultrazoom.control import ControlVector
 
 
 model_name = "andrewdalpino/MewZoom-2X-Ctrl"
 image_path = "./dataset/bird.png"
 
-model = MewZoom.from_pretrained(model_name)
+model = UltraZoom.from_pretrained(model_name)
 
 image_to_tensor = ToDtype(torch.float32, scale=True)
 tensor_to_pil = ToPILImage()

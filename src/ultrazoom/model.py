@@ -36,8 +36,7 @@ type FeatureMapSize = Size | tuple[int, int] | list[int]
 
 class MewZoom(Module, PyTorchModelHubMixin):
     """
-    A model for image super-resolution based on a Super U-Net with adaptive residual
-    connections.
+    A model for image super-resolution based on a U-Net.
     """
 
     AVAILABLE_UPSCALE_RATIOS = {2, 3, 4}
@@ -755,23 +754,28 @@ class QualityAssessor(Module):
             num_features > 0
         ), "Number of degradation features must be greater than 0."
 
-        self.conv = Conv2d(
-            num_channels, num_features, kernel_size=3, padding=1, bias=False
+        self.conv1 = Conv2d(
+            num_channels, num_channels, kernel_size=3, padding=1, bias=False
         )
+
+        self.conv2 = Conv2d(num_channels, num_features, kernel_size=1)
 
         self.pool = AdaptiveAvgPool2d(1)
 
         self.flatten = Flatten(start_dim=1)
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
+        kaiming_uniform_(self.conv1.weight)
+        kaiming_uniform_(self.conv2.weight)
 
     def add_weight_norms(self) -> None:
-        self.conv = weight_norm(self.conv)
+        self.conv1 = weight_norm(self.conv1)
+        self.conv2 = weight_norm(self.conv2)
 
     def forward(self, x: Tensor) -> Tensor:
-        z = self.conv.forward(x)
+        z = self.conv1.forward(x)
         z = self.pool.forward(z)
+        z = self.conv2.forward(z)
         z = self.flatten.forward(z)
 
         return z

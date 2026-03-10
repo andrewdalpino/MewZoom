@@ -59,33 +59,46 @@ class RelativisticBCELoss(Module):
     Relativistic average BCE with logits loss on patches for generative adversarial network training.
     """
 
-    def __init__(self):
+    def __init__(self, real_label_noise: float, fake_label_noise: float):
         super().__init__()
 
+        assert 0.0 <= real_label_noise < 1.0, "Real label noise must be in [0, 1)."
+        assert 0.0 <= fake_label_noise < 1.0, "Fake label noise must be in [0, 1)."
+
         self.bce = BCEWithLogitsLoss()
+
+        self.real_label_noise = real_label_noise
+        self.fake_label_noise = fake_label_noise
 
     def forward_critic(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
         """
         Compute critic loss.
 
         Args:
-            y_pred_real: Critic output for real images.
-            y_pred_fake: Critic output for fake images.
+            y_pred_real: Critic output for real images (B, C, H, W).
+            y_pred_fake: Critic output for fake images (B, C, H, W).
         """
 
-        y_pred_fake_patch = y_pred_fake.squeeze(1)  # (B, H, W)
-        y_pred_real_patch = y_pred_real.squeeze(1)  # (B, H, W)
+        y_pred_fake = y_pred_fake.squeeze(1)  # (B, H, W)
+        y_pred_real = y_pred_real.squeeze(1)  # (B, H, W)
 
-        y_pred_fake_sigma = y_pred_fake_patch.mean(dim=(1, 2), keepdim=True)
-        y_pred_real_sigma = y_pred_real_patch.mean(dim=(1, 2), keepdim=True)
+        y_pred_fake_sigma = y_pred_fake.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
+        y_pred_real_sigma = y_pred_real.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
 
-        y_pred_fake = y_pred_fake_patch - y_pred_real_sigma
-        y_pred_real = y_pred_real_patch - y_pred_fake_sigma
+        y_pred_fake = y_pred_fake - y_pred_real_sigma
+        y_pred_real = y_pred_real - y_pred_fake_sigma
 
         y_pred = torch.cat((y_pred_fake, y_pred_real))
 
-        y_fake = torch.zeros_like(y_pred_fake)
-        y_real = torch.ones_like(y_pred_real)
+        if self.fake_label_noise > 0.0:
+            y_fake = torch.rand_like(y_pred_fake) * self.fake_label_noise
+        else:
+            y_fake = torch.zeros_like(y_pred_fake)
+
+        if self.real_label_noise > 0.0:
+            y_real = 1.0 - torch.rand_like(y_pred_real) * self.real_label_noise
+        else:
+            y_real = torch.ones_like(y_pred_real)
 
         y = torch.cat((y_fake, y_real))
 
@@ -98,16 +111,16 @@ class RelativisticBCELoss(Module):
         Compute generator loss.
 
         Args:
-            y_pred_fake: Critic output for fake images.What
-            y_pred_real: Critic output for real images.
+            y_pred_fake: Critic output for fake images (B, C, H, W).
+            y_pred_real: Critic output for real images (B, C, H, W).
         """
 
-        y_pred_fake_patch = y_pred_fake.squeeze(1)  # (B, H, W)
-        y_pred_real_patch = y_pred_real.squeeze(1)  # (B, H, W)
+        y_pred_fake = y_pred_fake.squeeze(1)  # (B, H, W)
+        y_pred_real = y_pred_real.squeeze(1)  # (B, H, W)
 
-        y_pred_real_sigma = y_pred_real_patch.mean(dim=(1, 2), keepdim=True)
+        y_pred_real_sigma = y_pred_real.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
 
-        y_pred = y_pred_fake_patch - y_pred_real_sigma
+        y_pred = y_pred_fake - y_pred_real_sigma
 
         y = torch.ones_like(y_pred)
 
@@ -116,16 +129,56 @@ class RelativisticBCELoss(Module):
         return loss
 
 
-class BalancedMultitaskLoss(Module):
-    """A dynamic multitask loss weighting where each task contributes equally."""
+class R1GradientPenalty(Module):
+    """
+    R1 regularization penalty for generative adversarial network training that penalizes the
+    gradient of the critic's output with respect to real images.
+    """
 
-    def __init__(self, num_losses: int, epsilon: float):
+    def __init__(self, gamma: float):
         super().__init__()
 
-        assert num_losses > 0, "Number of losses must be positive."
-        assert epsilon > 0.0, "Epsilon must be positive."
+        assert gamma >= 0.0, "Gamma must be non-negative."
 
-        self.epsilon = Buffer(torch.full((num_losses,), epsilon))
+        self.gamma = torch.tensor(gamma)
+
+    def forward(self, y_pred_real: Tensor, y_real: Tensor) -> Tensor:
+        """
+        Compute R1 regularization penalty.
+
+        Args:
+            y_pred_real: Critic output for real images.
+            y_real: Real images corresponding to y_pred_real.
+        """
+
+        grad_outputs = torch.ones_like(y_pred_real)
+
+        gradients = torch.autograd.grad(
+            outputs=y_pred_real,
+            inputs=y_real,
+            grad_outputs=grad_outputs,
+        )[0]
+
+        gradients = gradients.view(gradients.size(0), -1)
+
+        norms = gradients.norm(2, dim=1).square().mean()
+
+        penalty = 0.5 * self.gamma * norms
+
+        return penalty
+
+
+class WeightedMultitaskLoss(Module):
+    """A multitask loss weighting where each task contributes based on a static scalar."""
+
+    def __init__(self, weights: list[float]):
+        super().__init__()
+
+        num_losses = len(weights)
+
+        assert num_losses > 0, "Number of losses must be positive."
+
+        self.weights = Buffer(torch.tensor(weights, dtype=torch.float32))
 
         self.num_losses = num_losses
 
@@ -134,12 +187,9 @@ class BalancedMultitaskLoss(Module):
             losses.size(0) == self.num_losses
         ), "Number of losses must match number of tasks."
 
-        # Prevent division by zero by replacing with epsilon.
-        losses = torch.where(losses == 0.0, self.epsilon, losses)
+        weighted_losses = self.weights * losses
 
-        balanced_losses = losses / losses.detach()
-
-        combined_loss = balanced_losses.sum()
+        combined_loss = weighted_losses.sum()
 
         return combined_loss
 

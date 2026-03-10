@@ -31,7 +31,7 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.ultrazoom.model import MewZoom, Bouncer
-from loss import RelativisticBCELoss, BalancedMultitaskLoss
+from loss import RelativisticBCELoss, WeightedMultitaskLoss
 from metrics import PatchF1Score
 
 from tqdm import tqdm
@@ -58,15 +58,20 @@ def main():
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--upscaler_momentum_decay", default=0.5, type=float)
+    parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--critic_momentum_decay", default=0.5, type=float)
+    parser.add_argument("--pixel_l2_weight", default=1.0, type=float)
+    parser.add_argument("--stage2_l2_weight", default=0.1, type=float)
+    parser.add_argument("--degradation_l2_weight", default=0.01, type=float)
+    parser.add_argument("--upscaler_bce_weight", default=0.001, type=float)
+    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
+    parser.add_argument("--critic_momentum_decay", default=0.1, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--combined_loss_epsilon", default=1e-8, type=float)
     parser.add_argument("--spectral_norm_iterations", default=1, type=int)
+    parser.add_argument("--real_label_noise", default=0.1, type=float)
+    parser.add_argument("--fake_label_noise", default=0.0, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=3, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=4, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -200,8 +205,16 @@ def main():
     critic = critic.to(args.device)
 
     l2_loss = MSELoss()
-    bce_loss = RelativisticBCELoss()
-    combined_loss = BalancedMultitaskLoss(4, args.combined_loss_epsilon).to(args.device)
+    bce_loss = RelativisticBCELoss(args.real_label_noise, args.fake_label_noise)
+
+    combined_loss = WeightedMultitaskLoss(
+        [
+            args.pixel_l2_weight,
+            args.stage2_l2_weight,
+            args.degradation_l2_weight,
+            args.upscaler_bce_weight,
+        ]
+    ).to(args.device)
 
     upscaler_optimizer = AdamW(
         upscaler.parameters(),
@@ -312,7 +325,7 @@ def main():
 
                     u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real)
 
-                    losses = torch.stack([pixel_l2, stage2_l2, degradation_l2, u_bce])
+                    losses = torch.stack([pixel_l2, degradation_l2, stage2_l2, u_bce])
 
                     u_loss = combined_loss.forward(losses)
 

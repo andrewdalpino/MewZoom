@@ -29,7 +29,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.ultrazoom.model import MewZoom
+from src.ultrazoom.model import MewZoomUnet
 from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
@@ -45,7 +45,7 @@ def main():
         "--upscale_ratio",
         default=2,
         type=int,
-        choices=MewZoom.AVAILABLE_UPSCALE_RATIOS,
+        choices=MewZoomUnet.AVAILABLE_UPSCALE_RATIOS,
     )
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
@@ -65,8 +65,14 @@ def main():
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
     parser.add_argument("--min_loss_weight", default=1e-2, type=float)
-    parser.add_argument("--num_channels", default=48, type=int)
-    parser.add_argument("--num_layers", default=64, type=int)
+    parser.add_argument("--primary_channels", default=48, type=int)
+    parser.add_argument("--primary_layers", default=8, type=int)
+    parser.add_argument("--secondary_channels", default=96, type=int)
+    parser.add_argument("--secondary_layers", default=8, type=int)
+    parser.add_argument("--tertiary_channels", default=192, type=int)
+    parser.add_argument("--tertiary_layers", default=8, type=int)
+    parser.add_argument("--quaternary_channels", default=384, type=int)
+    parser.add_argument("--quaternary_layers", default=8, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
@@ -164,19 +170,25 @@ def main():
 
     upscaler_args = {
         "upscale_ratio": args.upscale_ratio,
-        "num_channels": args.num_channels,
+        "primary_channels": args.primary_channels,
+        "primary_layers": args.primary_layers,
+        "secondary_channels": args.secondary_channels,
+        "secondary_layers": args.secondary_layers,
+        "tertiary_channels": args.tertiary_channels,
+        "tertiary_layers": args.tertiary_layers,
+        "quaternary_channels": args.quaternary_channels,
+        "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
-        "num_layers": args.num_layers,
     }
 
-    upscaler = MewZoom(**upscaler_args)
+    upscaler = MewZoomUnet(**upscaler_args)
 
     upscaler.add_qa_head(training.num_degradations)
     upscaler.add_weight_norms()
 
     upscaler = upscaler.to(args.device)
 
-    upscaler: MewZoom = torch.compile(upscaler)
+    upscaler: MewZoomUnet = torch.compile(upscaler)
 
     l1_loss = L1Loss()
     l2_loss = MSELoss()
@@ -227,7 +239,7 @@ def main():
         upscaler_optimizer.zero_grad()
         combined_loss_optimizer.zero_grad()
 
-        for batch, (x, y_orig, y_deg) in enumerate(
+        for step, (x, y_orig, y_deg) in enumerate(
             tqdm(train_loader, desc=f"Epoch {epoch}", leave=False), start=1
         ):
             x = x.to(args.device, non_blocking=True)
@@ -249,7 +261,7 @@ def main():
 
             scaled_loss.backward()
 
-            if batch % args.gradient_accumulation_steps == 0:
+            if step % args.gradient_accumulation_steps == 0:
                 norm = clip_grad_norm_(upscaler.parameters(), args.max_gradient_norm)
                 _ = clip_grad_norm_(combined_loss.parameters(), args.max_gradient_norm)
 

@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 import torch
 
 from torch.utils.data import DataLoader
-from torch.nn import MSELoss
+from torch.nn import L1Loss, MSELoss
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW
 from torch.amp.autocast_mode import autocast
@@ -30,7 +30,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.ultrazoom.model import MewZoom, Bouncer
+from src.ultrazoom.model import MewZoomUnet, Bouncer
 from loss import RelativisticBCELoss, WeightedMultitaskLoss
 from metrics import PatchF1Score
 
@@ -58,20 +58,19 @@ def main():
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
-    parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--pixel_l2_weight", default=1.0, type=float)
-    parser.add_argument("--stage2_l2_weight", default=0.1, type=float)
-    parser.add_argument("--degradation_l2_weight", default=0.01, type=float)
-    parser.add_argument("--upscaler_bce_weight", default=0.001, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
-    parser.add_argument("--critic_momentum_decay", default=0.1, type=float)
+    parser.add_argument("--pixel_weight", default=1.0, type=float)
+    parser.add_argument("--perceptual_weight", default=0.01, type=float)
+    parser.add_argument("--degradation_weight", default=0.1, type=float)
+    parser.add_argument("--adversarial_weight", default=0.001, type=float)
+    parser.add_argument("--critic_learning_rate", default=3e-4, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
+    parser.add_argument("--critic_step_ratio", default=3, type=int)
     parser.add_argument("--spectral_norm_iterations", default=1, type=int)
-    parser.add_argument("--real_label_noise", default=0.1, type=float)
-    parser.add_argument("--fake_label_noise", default=0.0, type=float)
+    parser.add_argument("--real_label_jitter", default=0.1, type=float)
+    parser.add_argument("--fake_label_jitter", default=0.0, type=float)
     parser.add_argument("--num_epochs", default=30, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=4, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -177,7 +176,7 @@ def main():
     train_loader = new_dataloader(training, shuffle=True)
     test_loader = new_dataloader(testing)
 
-    upscaler = MewZoom(**upscaler_args)
+    upscaler = MewZoomUnet(**upscaler_args)
 
     upscaler.add_qa_head(training.num_degradations)
     upscaler.add_weight_norms()
@@ -204,29 +203,21 @@ def main():
 
     critic = critic.to(args.device)
 
+    l1_loss = L1Loss()
     l2_loss = MSELoss()
-    bce_loss = RelativisticBCELoss(args.real_label_noise, args.fake_label_noise)
+    bce_loss = RelativisticBCELoss(args.real_label_jitter, args.fake_label_jitter)
 
     combined_loss = WeightedMultitaskLoss(
         [
-            args.pixel_l2_weight,
-            args.stage2_l2_weight,
-            args.degradation_l2_weight,
-            args.upscaler_bce_weight,
+            args.pixel_weight,
+            args.perceptual_weight,
+            args.degradation_weight,
+            args.adversarial_weight,
         ]
     ).to(args.device)
 
-    upscaler_optimizer = AdamW(
-        upscaler.parameters(),
-        lr=args.upscaler_learning_rate,
-        betas=(1.0 - args.upscaler_momentum_decay, 0.999),
-    )
-
-    critic_optimizer = AdamW(
-        critic.parameters(),
-        lr=args.critic_learning_rate,
-        betas=(1.0 - args.critic_momentum_decay, 0.999),
-    )
+    upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
+    critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate)
 
     starting_epoch = 1
 
@@ -263,7 +254,7 @@ def main():
     critic.train()
 
     for epoch in range(starting_epoch, args.num_epochs + 1):
-        total_pixel_l2, total_stage2_l2, total_degradation_l2 = 0.0, 0.0, 0.0
+        total_pixel_loss, total_perceptual_loss, total_degradation_loss = 0.0, 0.0, 0.0
         total_u_bce, total_c_bce = 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
         total_upscaler_batches, total_critic_batches = 0, 0
@@ -274,14 +265,16 @@ def main():
         critic_optimizer.zero_grad()
         upscaler_optimizer.zero_grad()
 
-        for step, (x, y_orig, y_deg) in enumerate(
+        for batch, (x, y_orig, y_deg) in enumerate(
             tqdm(train_loader, desc=f"Epoch {epoch}", leave=False), start=1
         ):
             x = x.to(args.device, non_blocking=True)
             y_orig = y_orig.to(args.device, non_blocking=True)
             y_deg = y_deg.to(args.device, non_blocking=True)
 
-            update_this_step = step % args.gradient_accumulation_steps == 0
+            train_upscaler = not is_warmup and batch % args.critic_step_ratio == 0
+
+            update_critic_this_batch = batch % args.gradient_accumulation_steps == 0
 
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
@@ -295,7 +288,7 @@ def main():
 
                 scaled_c_loss.backward()
 
-            if update_this_step:
+            if update_critic_this_batch:
                 c_norm = clip_grad_norm_(
                     critic.parameters(), args.critic_max_gradient_norm
                 )
@@ -312,20 +305,22 @@ def main():
 
             total_critic_batches += 1
 
-            if not is_warmup:
+            if train_upscaler:
                 with amp_context:
-                    pixel_l2 = l2_loss.forward(u_pred_sr, y_orig)
-
-                    degradation_l2 = l2_loss.forward(u_pred_deg, y_deg)
+                    pixel_loss = l1_loss.forward(u_pred_sr, y_orig)
 
                     _, z2_fake, _, _, c_pred_fake = critic.forward(u_pred_sr)
                     _, z2_real, _, _, c_pred_real = critic.forward(y_orig)
 
-                    stage2_l2 = l2_loss.forward(z2_fake, z2_real)
+                    perceptual_loss = l2_loss.forward(z2_fake, z2_real.detach())
 
-                    u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real)
+                    degradation_loss = l2_loss.forward(u_pred_deg, y_deg)
 
-                    losses = torch.stack([pixel_l2, degradation_l2, stage2_l2, u_bce])
+                    u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real.detach())
+
+                    losses = torch.stack(
+                        [pixel_loss, perceptual_loss, degradation_loss, u_bce]
+                    )
 
                     u_loss = combined_loss.forward(losses)
 
@@ -333,7 +328,11 @@ def main():
 
                 scaled_u_loss.backward()
 
-                if update_this_step:
+                update_upscaler_this_batch = (
+                    total_upscaler_batches % args.gradient_accumulation_steps == 0
+                )
+
+                if update_upscaler_this_batch:
                     u_norm = clip_grad_norm_(
                         upscaler.parameters(), args.upscaler_max_gradient_norm
                     )
@@ -346,29 +345,29 @@ def main():
 
                     total_upscaler_steps += 1
 
-                total_pixel_l2 += pixel_l2.item()
-                total_stage2_l2 += stage2_l2.item()
-                total_degradation_l2 += degradation_l2.item()
+                total_pixel_loss += pixel_loss.item()
+                total_perceptual_loss += perceptual_loss.item()
+                total_degradation_loss += degradation_loss.item()
                 total_u_bce += u_bce.item()
 
                 total_upscaler_batches += 1
 
         # Prevent divide by zero errors when no updates were made to the upscaler this epoch.
-        total_upscaler_batches = max(total_upscaler_batches, 1)
-        total_upscaler_steps = max(total_upscaler_steps, 1)
+        total_upscaler_batches = max(1, total_upscaler_batches)
+        total_upscaler_steps = max(1, total_upscaler_steps)
 
-        average_pixel_l2 = total_pixel_l2 / total_upscaler_batches
-        average_stage2_l2 = total_stage2_l2 / total_upscaler_batches
-        average_degradation_l2 = total_degradation_l2 / total_upscaler_batches
+        average_pixel_loss = total_pixel_loss / total_upscaler_batches
+        average_perceptual_loss = total_perceptual_loss / total_upscaler_batches
+        average_degradation_loss = total_degradation_loss / total_upscaler_batches
         average_u_bce = total_u_bce / total_upscaler_batches
         average_c_bce = total_c_bce / total_critic_batches
 
         average_u_gradient_norm = total_u_gradient_norm / total_upscaler_steps
         average_c_gradient_norm = total_c_gradient_norm / total_critic_steps
 
-        logger.add_scalar("Pixel L2", average_pixel_l2, epoch)
-        logger.add_scalar("Stage 2 L2", average_stage2_l2, epoch)
-        logger.add_scalar("Degradation L2", average_degradation_l2, epoch)
+        logger.add_scalar("Pixel L1", average_pixel_loss, epoch)
+        logger.add_scalar("Perceptual L2", average_perceptual_loss, epoch)
+        logger.add_scalar("Degradation L2", average_degradation_loss, epoch)
         logger.add_scalar("Upscaler BCE", average_u_bce, epoch)
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
         logger.add_scalar("Critic BCE", average_c_bce, epoch)
@@ -376,9 +375,9 @@ def main():
 
         print(
             f"Epoch {epoch}:",
-            f"Pixel L2: {average_pixel_l2:.5},",
-            f"Stage 2 L2: {average_stage2_l2:.5},",
-            f"Degradation L2: {average_degradation_l2:.5},",
+            f"Pixel L1: {average_pixel_loss:.5},",
+            f"Perceptual L2: {average_perceptual_loss:.5},",
+            f"Degradation L2: {average_degradation_loss:.5},",
             f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",
             f"Critic BCE: {average_c_bce:.5},",

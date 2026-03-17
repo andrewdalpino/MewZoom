@@ -12,7 +12,7 @@ from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype
 from torchvision.utils import make_grid, save_image
 
-from src.ultrazoom.model import MewZoom
+from src.ultrazoom.model import MewZoomUnet
 
 import matplotlib.pyplot as plt
 
@@ -36,7 +36,7 @@ def main():
 
     checkpoint = torch.load(args.checkpoint_path, map_location="cpu", weights_only=True)
 
-    model = MewZoom(**checkpoint["upscaler_args"])
+    model = MewZoomUnet(**checkpoint["upscaler_args"])
 
     model.add_qa_head(checkpoint["degradation_features"])
     model.add_weight_norms()

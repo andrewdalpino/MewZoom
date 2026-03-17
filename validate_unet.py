@@ -1,5 +1,3 @@
-from time import time
-
 from argparse import ArgumentParser
 
 import torch
@@ -12,8 +10,7 @@ from torchmetrics.image import (
     VisualInformationFidelity,
 )
 
-from src.ultrazoom.model import MewZoom
-from src.ultrazoom.control import ControlVector
+from src.ultrazoom.model import MewZoomUnet
 
 from data import ImagePairs
 
@@ -47,7 +44,7 @@ def main():
 
     checkpoint = torch.load(args.checkpoint_path, map_location="cpu", weights_only=True)
 
-    model = MewZoom(**checkpoint["model_args"])
+    model = MewZoomUnet(**checkpoint["model_args"])
 
     model.add_qa_head(checkpoint["degradation_features"])
     model.add_weight_norms()

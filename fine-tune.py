@@ -30,7 +30,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.ultrazoom.model import MewZoomUnet, Bouncer
+from src.mewzoom.model import MewZoom, Bouncer
 from loss import RelativisticBCELoss, WeightedMultitaskLoss
 from metrics import PatchF1Score
 
@@ -60,7 +60,7 @@ def main():
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--pixel_weight", default=1.0, type=float)
-    parser.add_argument("--perceptual_weight", default=0.01, type=float)
+    parser.add_argument("--perceptual_weight", default=10.0, type=float)
     parser.add_argument("--degradation_weight", default=0.1, type=float)
     parser.add_argument("--adversarial_weight", default=0.001, type=float)
     parser.add_argument("--critic_learning_rate", default=3e-4, type=float)
@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--real_label_jitter", default=0.1, type=float)
     parser.add_argument("--fake_label_jitter", default=0.0, type=float)
-    parser.add_argument("--num_epochs", default=30, type=int)
+    parser.add_argument("--num_epochs", default=50, type=int)
     parser.add_argument("--critic_warmup_epochs", default=1, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
@@ -176,10 +176,10 @@ def main():
     train_loader = new_dataloader(training, shuffle=True)
     test_loader = new_dataloader(testing)
 
-    upscaler = MewZoomUnet(**upscaler_args)
+    upscaler = MewZoom(**upscaler_args)
 
-    upscaler.add_qa_head(training.num_degradations)
-    upscaler.add_weight_norms()
+    upscaler.model.add_qa_head(training.num_degradations)
+    upscaler.model.add_weight_norms()
 
     state_dict = checkpoint["upscaler"]
 
@@ -237,7 +237,7 @@ def main():
         print("Previous checkpoint resumed successfully")
 
     if args.activation_checkpointing:
-        upscaler.enable_activation_checkpointing()
+        upscaler.model.enable_activation_checkpointing()
         critic.enable_activation_checkpointing()
 
     print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")

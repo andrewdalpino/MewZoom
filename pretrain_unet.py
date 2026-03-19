@@ -29,7 +29,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.ultrazoom.model import MewZoomUnet
+from src.mewzoom.model import MewZoom, Architecture
 from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
@@ -41,12 +41,7 @@ def main():
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
     parser.add_argument("--num_dataset_processes", default=8, type=int)
-    parser.add_argument(
-        "--upscale_ratio",
-        default=2,
-        type=int,
-        choices=MewZoomUnet.AVAILABLE_UPSCALE_RATIOS,
-    )
+    parser.add_argument("--upscale_ratio", default=2, type=int, choices={2, 3, 4, 8})
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
     parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
@@ -60,7 +55,7 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=64, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=2, type=int)
-    parser.add_argument("--num_epochs", default=200, type=int)
+    parser.add_argument("--num_epochs", default=150, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
@@ -74,6 +69,7 @@ def main():
     parser.add_argument("--quaternary_channels", default=384, type=int)
     parser.add_argument("--quaternary_layers", default=8, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
+    parser.add_argument("--attention_hidden_ratio", default=8, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
     parser.add_argument("--checkpoint_interval", default=10, type=int)
@@ -169,6 +165,7 @@ def main():
     test_loader = new_dataloader(testing)
 
     upscaler_args = {
+        "architecture": Architecture.UNET,
         "upscale_ratio": args.upscale_ratio,
         "primary_channels": args.primary_channels,
         "primary_layers": args.primary_layers,
@@ -179,16 +176,17 @@ def main():
         "quaternary_channels": args.quaternary_channels,
         "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
+        "attention_hidden_ratio": args.attention_hidden_ratio,
     }
 
-    upscaler = MewZoomUnet(**upscaler_args)
+    upscaler = MewZoom(**upscaler_args)
 
-    upscaler.add_qa_head(training.num_degradations)
-    upscaler.add_weight_norms()
+    upscaler.model.add_qa_head(training.num_degradations)
+    upscaler.model.add_weight_norms()
 
     upscaler = upscaler.to(args.device)
 
-    upscaler: MewZoomUnet = torch.compile(upscaler)
+    upscaler: MewZoom = torch.compile(upscaler)
 
     l1_loss = L1Loss()
     l2_loss = MSELoss()
@@ -226,7 +224,7 @@ def main():
         print("Previous checkpoint resumed successfully")
 
     if args.activation_checkpointing:
-        upscaler.enable_activation_checkpointing()
+        upscaler.model.enable_activation_checkpointing()
 
     print("Training ...")
     upscaler.train()

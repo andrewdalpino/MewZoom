@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 from torch.nn import Conv2d
 
-from src.ultrazoom.model import (
+from src.mewzoom.model import (
     MewZoom,
     ONNXModel,
     FanOutProjection,

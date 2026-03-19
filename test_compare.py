@@ -12,7 +12,7 @@ from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype
 from torchvision.utils import make_grid, save_image
 
-from src.ultrazoom.model import MewZoom
+from src.mewzoom.model import MewZoom
 
 import matplotlib.pyplot as plt
 
@@ -34,12 +34,14 @@ def main():
     if "mps" in args.device and not mps_is_available():
         raise RuntimeError("MPS is not available.")
 
-    checkpoint = torch.load(args.checkpoint_path, map_location="cpu", weights_only=True)
+    checkpoint = torch.load(
+        args.checkpoint_path, map_location="cpu", weights_only=False
+    )
 
-    model = MewZoom(**checkpoint["upscaler_args"])
+    upscaler = MewZoom(**checkpoint["upscaler_args"])
 
-    model.add_qa_head(checkpoint["degradation_features"])
-    model.add_weight_norms()
+    upscaler.model.add_qa_head(checkpoint["degradation_features"])
+    upscaler.model.add_weight_norms()
 
     state_dict = checkpoint["upscaler"]
 
@@ -47,14 +49,14 @@ def main():
     for key in list(state_dict.keys()):
         state_dict[key.replace("_orig_mod.", "")] = state_dict.pop(key)
 
-    model.load_state_dict(state_dict)
+    upscaler.load_state_dict(state_dict)
 
-    model.remove_parameterizations()
-    model.remove_qa_head()
+    upscaler.model.remove_parameterizations()
+    upscaler.model.remove_qa_head()
 
-    model = model.to(args.device)
+    upscaler = upscaler.to(args.device)
 
-    model.eval()
+    upscaler.eval()
 
     print("Model checkpoint loaded successfully")
 
@@ -68,13 +70,13 @@ def main():
 
     y_bicubic = interpolate(
         x,
-        scale_factor=model.upscale_ratio,
+        scale_factor=upscaler.model.upscale_ratio,
         mode="bicubic",
         align_corners=False,
         recompute_scale_factor=True,
     )
 
-    y_pred = model.upscale(x)
+    y_pred = upscaler.upscale(x)
 
     pair = torch.stack(
         [

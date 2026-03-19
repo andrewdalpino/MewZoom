@@ -1,5 +1,6 @@
-from abc import ABC, abstractmethod
+from enum import Enum
 from math import floor, ceil
+from abc import ABC, abstractmethod
 
 from typing import Self
 
@@ -11,10 +12,10 @@ from torch import Size, Tensor
 
 from torch.nn import (
     Module,
-    ModuleList,
     Sequential,
     Conv2d,
     SiLU,
+    Sigmoid,
     PixelShuffle,
     AdaptiveAvgPool2d,
     Flatten,
@@ -38,6 +39,12 @@ class Upscaler(ABC):
     """An interface for upscaler models."""
 
     @abstractmethod
+    def initialize_weights(self) -> None:
+        """Initialize all model weights."""
+
+        pass
+
+    @abstractmethod
     def upscale(self, x: Tensor) -> Tensor:
         """
         Upscale the input image tensor.
@@ -49,7 +56,58 @@ class Upscaler(ABC):
         pass
 
 
-class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
+class WeightNormalizer(ABC):
+    """An interface for adding weight normalization parameterization."""
+
+    @abstractmethod
+    def add_weight_norms(self) -> None:
+        """Add weight normalization parameterization to the network."""
+
+        pass
+
+
+class SpectralNormalizer(ABC):
+    """An interface for adding spectral normalization parameterization."""
+
+    @abstractmethod
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        """Add spectral normalization parameterization to the network."""
+
+        pass
+
+
+class ActivationCheckpointer(ABC):
+    """An interface for enabling activation checkpointing."""
+
+    @abstractmethod
+    def enable_activation_checkpointing(self) -> None:
+        """
+        Instead of memorizing the activations of the forward pass, recompute them
+        at every checkpoint.
+        """
+
+        pass
+
+
+class QualityAssessor(ABC):
+    """An interface for adding a quality assessment head to predict degradation features."""
+
+    @abstractmethod
+    def add_qa_head(self, num_features: int) -> None:
+        """Add a quality assessment head to predict degradation features."""
+
+        pass
+
+    @abstractmethod
+    def remove_qa_head(self) -> None:
+        """Remove the quality assessment head."""
+
+        pass
+
+
+class MewZoomTrunkNet(
+    Upscaler, WeightNormalizer, ActivationCheckpointer, QualityAssessor, Module
+):
     """
     A fast single-image super-resolution model with a deep low-resolution encoder network
     and high-resolution sub-pixel convolutional decoder head.
@@ -61,8 +119,9 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
         self,
         upscale_ratio: int,
         num_channels: int,
-        hidden_ratio: int,
         num_layers: int,
+        hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -72,7 +131,9 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
 
         self.stem = FanOutProjection(3, num_channels)
 
-        self.body = TrunkNet(num_channels, hidden_ratio, num_layers)
+        self.body = TrunkNet(
+            num_channels, num_layers, hidden_ratio, exciter_hidden_ratio
+        )
 
         self.head = SuperResolver(num_channels, upscale_ratio)
 
@@ -112,15 +173,13 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
         self.body.add_weight_norms()
         self.head.add_weight_norms()
 
-    def remove_parameterizations(self) -> None:
-        """Remove all network parameterizations."""
+    def enable_activation_checkpointing(self) -> None:
+        """
+        Instead of memorizing the activations of the forward pass, recompute them
+        at every encoder block.
+        """
 
-        for module in self.modules():
-            if is_parametrized(module):
-                params = [name for name in module.parametrizations.keys()]
-
-                for name in params:
-                    remove_parametrizations(module, name)
+        self.body.enable_activation_checkpointing()
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor | None]:
         """
@@ -141,7 +200,6 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
 
         Args:
             x: Input image tensor of shape (B, 3, H, W).
-            c: Control vectors with shape (B, 3).
         """
 
         z, _ = self.forward(x)
@@ -151,7 +209,9 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
         return z
 
 
-class MewZoomUnet(Upscaler, Module, PyTorchModelHubMixin):
+class MewZoomUNet(
+    Upscaler, WeightNormalizer, ActivationCheckpointer, QualityAssessor, Module
+):
     """
     A model for image super-resolution based on a U-Net.
     """
@@ -170,6 +230,7 @@ class MewZoomUnet(Upscaler, Module, PyTorchModelHubMixin):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -189,6 +250,7 @@ class MewZoomUnet(Upscaler, Module, PyTorchModelHubMixin):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            exciter_hidden_ratio,
         )
 
         self.head = SuperResolver(primary_channels, upscale_ratio)
@@ -229,16 +291,6 @@ class MewZoomUnet(Upscaler, Module, PyTorchModelHubMixin):
         self.body.add_weight_norms()
         self.head.add_weight_norms()
 
-    def remove_parameterizations(self) -> None:
-        """Remove all network parameterizations."""
-
-        for module in self.modules():
-            if is_parametrized(module):
-                params = [name for name in module.parametrizations.keys()]
-
-                for name in params:
-                    remove_parametrizations(module, name)
-
     def enable_activation_checkpointing(self) -> None:
         """
         Instead of memorizing the activations of the forward pass, recompute them
@@ -274,6 +326,85 @@ class MewZoomUnet(Upscaler, Module, PyTorchModelHubMixin):
         z = torch.clamp(z, 0, 1)
 
         return z
+
+
+class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
+    """
+    A factory class for MewZoom super-resolution models.
+
+    Example usage:
+
+        model = MewZoom(
+            architecture="trunknet",
+            upscale_ratio=2,
+            num_channels=64,
+            num_layers=8,
+            hidden_ratio=2,
+            exciter_hidden_ratio=8,
+        )
+
+        model = MewZoom(
+            architecture="unet",
+            upscale_ratio=2,
+            primary_channels=64,
+            primary_layers=4,
+            secondary_channels=128,
+            secondary_layers=4,
+            tertiary_channels=256,
+            tertiary_layers=4,
+            quaternary_channels=512,
+            quaternary_layers=2,
+            hidden_ratio=2,
+            exciter_hidden_ratio=8,
+        )
+    """
+
+    def __init__(self, architecture: str, **kwargs):
+        super().__init__()
+
+        match architecture.lower():
+            case "trunknet":
+                model = MewZoomTrunkNet(**kwargs)
+
+            case "unet":
+                model = MewZoomUNet(**kwargs)
+
+            case _:
+                raise ValueError("Invalid model architecture.")
+
+        self.model = model
+
+    def initialize_weights(self) -> None:
+        self.model.initialize_weights()
+
+    def remove_parameterizations(self) -> None:
+        """Remove all network parameterizations."""
+
+        for module in self.modules():
+            if is_parametrized(module):
+                params = [name for name in module.parametrizations.keys()]
+
+                for name in params:
+                    remove_parametrizations(module, name)
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor | None]:
+        """
+        Args:
+            x: Input image tensor of shape (B, 3, H, W).
+        """
+
+        return self.model.forward(x)
+
+    @torch.inference_mode()
+    def upscale(self, x: Tensor) -> Tensor:
+        """
+        Convenience method for inference.
+
+        Args:
+            x: Input image tensor of shape (B, 3, H, W).
+        """
+
+        return self.model.upscale(x)
 
 
 class ONNXModel(Module):
@@ -325,7 +456,13 @@ class FanOutProjection(Module):
 class TrunkNet(Module):
     """A low-resolution scale subnetwork employing a deep stack of encoder blocks."""
 
-    def __init__(self, num_channels: int, hidden_ratio: int, num_layers: int):
+    def __init__(
+        self,
+        num_channels: int,
+        num_layers: int,
+        hidden_ratio: int,
+        exciter_hidden_ratio: int,
+    ):
         super().__init__()
 
         assert num_layers >= 4, "Number of layers must be greater than or equal to 4."
@@ -358,6 +495,9 @@ class TrunkNet(Module):
             ]
         )
 
+        self.skip1 = LongSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip2 = LongSkipConnection(num_channels, exciter_hidden_ratio)
+
         self.qa_head = None
 
         self.checkpoint = lambda layer, x: layer.forward(x)
@@ -369,11 +509,14 @@ class TrunkNet(Module):
             for layer in stage:
                 layer.initialize_weights()
 
-        if isinstance(self.qa_head, QualityAssessor):
+        self.skip1.initialize_weights()
+        self.skip2.initialize_weights()
+
+        if isinstance(self.qa_head, QAHead):
             self.qa_head.initialize_weights()
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = QualityAssessor(self.num_channels, num_features)
+        self.qa_head = QAHead(self.num_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -383,7 +526,10 @@ class TrunkNet(Module):
             for layer in stage:
                 layer.add_weight_norms()
 
-        if isinstance(self.qa_head, QualityAssessor):
+        self.skip1.add_weight_norms()
+        self.skip2.add_weight_norms()
+
+        if isinstance(self.qa_head, QAHead):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -396,14 +542,20 @@ class TrunkNet(Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor | None]:
         z1 = self.checkpoint(self.stage1, x)
+
         z2 = self.checkpoint(self.stage2, z1)
 
-        if isinstance(self.qa_head, QualityAssessor):
+        if isinstance(self.qa_head, QAHead):
             z_qa = self.qa_head.forward(z2)
         else:
             z_qa = None
 
+        z2 = self.skip1.forward(z1, z2)
+
         z3 = self.checkpoint(self.stage3, z2)
+
+        z3 = self.skip2.forward(z2, z3)
+
         z4 = self.checkpoint(self.stage4, z3)
 
         return z4, z_qa
@@ -425,6 +577,7 @@ class UNet(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -462,6 +615,7 @@ class UNet(Module):
             primary_channels,
             floor(primary_layers / 2),
             hidden_ratio,
+            exciter_hidden_ratio,
         )
 
         self.qa_head = None
@@ -469,7 +623,7 @@ class UNet(Module):
         self.quaternary_channels = quaternary_channels
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = QualityAssessor(self.quaternary_channels, num_features)
+        self.qa_head = QAHead(self.quaternary_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -478,7 +632,7 @@ class UNet(Module):
         self.encoder.initialize_weights()
         self.decoder.initialize_weights()
 
-        if isinstance(self.qa_head, QualityAssessor):
+        if isinstance(self.qa_head, QAHead):
             self.qa_head.initialize_weights()
 
     def freeze_weights(self) -> None:
@@ -493,7 +647,7 @@ class UNet(Module):
         self.encoder.add_weight_norms()
         self.decoder.add_weight_norms()
 
-        if isinstance(self.qa_head, QualityAssessor):
+        if isinstance(self.qa_head, QAHead):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -503,7 +657,7 @@ class UNet(Module):
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         z1, z2, z3, z4 = self.encoder.forward(x)
 
-        if isinstance(self.qa_head, QualityAssessor):
+        if isinstance(self.qa_head, QAHead):
             z_qa = self.qa_head.forward(z4)
         else:
             z_qa = None
@@ -542,29 +696,29 @@ class Encoder(Module):
             quaternary_layers > 0
         ), "Number of quaternary layers must be greater than 0."
 
-        self.stage1 = ModuleList(
-            [
+        self.stage1 = Sequential(
+            *[
                 EncoderBlock(primary_channels, hidden_ratio)
                 for _ in range(primary_layers)
             ]
         )
 
-        self.stage2 = ModuleList(
-            [
+        self.stage2 = Sequential(
+            *[
                 EncoderBlock(secondary_channels, hidden_ratio)
                 for _ in range(secondary_layers)
             ]
         )
 
-        self.stage3 = ModuleList(
-            [
+        self.stage3 = Sequential(
+            *[
                 EncoderBlock(tertiary_channels, hidden_ratio)
                 for _ in range(tertiary_layers)
             ]
         )
 
-        self.stage4 = ModuleList(
-            [
+        self.stage4 = Sequential(
+            *[
                 EncoderBlock(quaternary_channels, hidden_ratio)
                 for _ in range(quaternary_layers)
             ]
@@ -620,25 +774,19 @@ class Encoder(Module):
         self.checkpoint = partial(torch_checkpoint, use_reentrant=False)
 
     def forward(self, x: Tensor) -> tuple[Tensor, ...]:
-        z1 = x
-
-        for layer in self.stage1:
-            z1 = self.checkpoint(layer, z1)
+        z1 = self.checkpoint(self.stage1, x)
 
         z2 = self.downsample1.forward(z1)
 
-        for layer in self.stage2:
-            z2 = self.checkpoint(layer, z2)
+        z2 = self.checkpoint(self.stage2, z2)
 
         z3 = self.downsample2.forward(z2)
 
-        for layer in self.stage3:
-            z3 = self.checkpoint(layer, z3)
+        z3 = self.checkpoint(self.stage3, z3)
 
         z4 = self.downsample3.forward(z3)
 
-        for layer in self.stage4:
-            z4 = self.checkpoint(layer, z4)
+        z4 = self.checkpoint(self.stage4, z4)
 
         return z1, z2, z3, z4
 
@@ -655,6 +803,7 @@ class Decoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -670,29 +819,29 @@ class Decoder(Module):
             quaternary_layers > 0
         ), "Number of quaternary layers must be greater than 0."
 
-        self.stage1 = ModuleList(
-            [
+        self.stage1 = Sequential(
+            *[
                 DecoderBlock(primary_channels, hidden_ratio)
                 for _ in range(primary_layers)
             ]
         )
 
-        self.stage2 = ModuleList(
-            [
+        self.stage2 = Sequential(
+            *[
                 DecoderBlock(secondary_channels, hidden_ratio)
                 for _ in range(secondary_layers)
             ]
         )
 
-        self.stage3 = ModuleList(
-            [
+        self.stage3 = Sequential(
+            *[
                 DecoderBlock(tertiary_channels, hidden_ratio)
                 for _ in range(tertiary_layers)
             ]
         )
 
-        self.stage4 = ModuleList(
-            [
+        self.stage4 = Sequential(
+            *[
                 DecoderBlock(quaternary_channels, hidden_ratio)
                 for _ in range(quaternary_layers)
             ]
@@ -702,9 +851,9 @@ class Decoder(Module):
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
 
-        self.skip1 = ResidualConnection()
-        self.skip2 = ResidualConnection()
-        self.skip3 = ResidualConnection()
+        self.skip1 = LongSkipConnection(secondary_channels, exciter_hidden_ratio)
+        self.skip2 = LongSkipConnection(tertiary_channels, exciter_hidden_ratio)
+        self.skip3 = LongSkipConnection(quaternary_channels, exciter_hidden_ratio)
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 
@@ -784,10 +933,7 @@ class Decoder(Module):
         return x
 
     def forward(self, x1: Tensor, x2: Tensor, x3: Tensor, x4: Tensor) -> Tensor:
-        z = x1
-
-        for layer in self.stage1:
-            z = self.checkpoint(layer, z)
+        z = self.checkpoint(self.stage1, x1)
 
         z = self.upsample1.forward(z)
 
@@ -795,8 +941,7 @@ class Decoder(Module):
 
         z = self.skip1.forward(x2, z)
 
-        for layer in self.stage2:
-            z = self.checkpoint(layer, z)
+        z = self.checkpoint(self.stage2, z)
 
         z = self.upsample2.forward(z)
 
@@ -804,8 +949,7 @@ class Decoder(Module):
 
         z = self.skip2.forward(x3, z)
 
-        for layer in self.stage3:
-            z = self.checkpoint(layer, z)
+        z = self.checkpoint(self.stage3, z)
 
         z = self.upsample3.forward(z)
 
@@ -813,8 +957,7 @@ class Decoder(Module):
 
         z = self.skip3.forward(x4, z)
 
-        for layer in self.stage4:
-            z = self.checkpoint(layer, z)
+        z = self.checkpoint(self.stage4, z)
 
         return z
 
@@ -904,6 +1047,102 @@ class ResidualConnection(Module):
         return x + z
 
 
+class LongSkipConnection(Module):
+    def __init__(self, num_channels: int, exciter_hidden_ratio: int):
+        super().__init__()
+
+        self.attention = ChannelAttention(num_channels, exciter_hidden_ratio)
+
+    def initialize_weights(self) -> None:
+        self.attention.initialize_weights()
+
+    def add_weight_norms(self) -> None:
+        self.attention.add_weight_norms()
+
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.attention.add_spectral_norms(num_iterations)
+
+    def forward(self, x: Tensor, z: Tensor) -> Tensor:
+        assert x.shape == z.shape, "Input and residual must have the same shape."
+
+        x = self.attention.forward(x, z)
+
+        return x + z
+
+
+class ChannelAttention(Module):
+    """A channel-wise attention mechanism for reweighting feature maps."""
+
+    def __init__(self, num_channels: int, exciter_hidden_ratio: int):
+        super().__init__()
+
+        assert num_channels > 0, "Number of channels must be greater than 0."
+
+        self.pool = AdaptiveAvgPool2d(1)
+
+        self.exciter = Exciter(num_channels, exciter_hidden_ratio)
+
+        self.sigmoid = Sigmoid()
+
+    def initialize_weights(self) -> None:
+        self.exciter.initialize_weights()
+
+    def add_weight_norms(self) -> None:
+        self.exciter.add_weight_norms()
+
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.exciter.add_spectral_norms(num_iterations)
+
+    def forward(self, x1: Tensor, x2: Tensor) -> Tensor:
+        z = self.pool.forward(x2)
+        z = self.exciter.forward(z)
+        z = self.sigmoid.forward(z)
+
+        return z * x1
+
+
+class Exciter(Module):
+    """A small non-linear squeeze and excitation network."""
+
+    def __init__(self, num_channels: int, hidden_ratio: int):
+        super().__init__()
+
+        assert num_channels > 0, "Number of channels must be greater than 0."
+
+        assert hidden_ratio in {
+            2,
+            4,
+            8,
+            16,
+        }, "Hidden ratio must be either 2, 4, 8, or 16."
+
+        hidden_channels = num_channels // hidden_ratio
+
+        self.conv1 = Conv2d(num_channels, hidden_channels, kernel_size=1, bias=False)
+        self.conv2 = Conv2d(hidden_channels, num_channels, kernel_size=1, bias=False)
+
+        self.silu = SiLU()
+
+    def initialize_weights(self) -> None:
+        kaiming_uniform_(self.conv1.weight)
+        kaiming_uniform_(self.conv2.weight)
+
+    def add_weight_norms(self) -> None:
+        self.conv1 = weight_norm(self.conv1)
+        self.conv2 = weight_norm(self.conv2)
+
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv1 = spectral_norm(self.conv1, n_power_iterations=num_iterations)
+        self.conv2 = spectral_norm(self.conv2, n_power_iterations=num_iterations)
+
+    def forward(self, x: Tensor) -> Tensor:
+        z = self.conv1.forward(x)
+        z = self.silu.forward(z)
+        z = self.conv2.forward(z)
+
+        return z
+
+
 class PixelCrush(Module):
     """Downsample the feature maps using strided convolution."""
 
@@ -982,7 +1221,7 @@ class SubpixelConv2d(Module):
         return z
 
 
-class QualityAssessor(Module):
+class QAHead(Module):
     """A decoder head for estimating the amount of degradation present in the input image."""
 
     def __init__(self, num_channels: int, num_features: int):
@@ -1046,7 +1285,7 @@ class SuperResolver(Module):
         return z
 
 
-class Bouncer(Module):
+class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
     """A critic network for detecting real and fake images for adversarial training."""
 
     AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}

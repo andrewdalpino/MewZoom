@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.3.0
+## 1.0.0
 
 - Change name to MewZoom.
-- Now uses a residual encoder-decoder (Unet) architecture.
+- Two new architectures, TrunkNet and U-Net.
 - Added QA head.
 - Added patch discriminator.
+- Added channel attention to long skip connections.
 
 ## 0.2.1
 

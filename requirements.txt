@@ -1,6 +1,7 @@
 torch~=2.9.0
 torchmetrics~=1.8.2
 torchvision~=0.24.0
+torch-fidelity~=0.4.0
 tensorboard~=2.19.0
 matplotlib~=3.10.3
 huggingface_hub~=0.32.4

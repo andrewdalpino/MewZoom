@@ -29,7 +29,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.ultrazoom.model import MewZoom
+from src.mewzoom.model import MewZoom, Architecture
 from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
@@ -41,12 +41,7 @@ def main():
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
     parser.add_argument("--num_dataset_processes", default=8, type=int)
-    parser.add_argument(
-        "--upscale_ratio",
-        default=2,
-        type=int,
-        choices=MewZoom.AVAILABLE_UPSCALE_RATIOS,
-    )
+    parser.add_argument("--upscale_ratio", default=2, type=int, choices={2, 3, 4, 8})
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
     parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
@@ -60,7 +55,7 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=64, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=2, type=int)
-    parser.add_argument("--num_epochs", default=200, type=int)
+    parser.add_argument("--num_epochs", default=150, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
@@ -68,6 +63,7 @@ def main():
     parser.add_argument("--num_channels", default=48, type=int)
     parser.add_argument("--num_layers", default=64, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
+    parser.add_argument("--exciter_hidden_ratio", default=8, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
     parser.add_argument("--checkpoint_interval", default=10, type=int)
@@ -163,16 +159,18 @@ def main():
     test_loader = new_dataloader(testing)
 
     upscaler_args = {
+        "architecture": Architecture.TRUNKNET,
         "upscale_ratio": args.upscale_ratio,
         "num_channels": args.num_channels,
-        "hidden_ratio": args.hidden_ratio,
         "num_layers": args.num_layers,
+        "hidden_ratio": args.hidden_ratio,
+        "exciter_hidden_ratio": args.exciter_hidden_ratio,
     }
 
     upscaler = MewZoom(**upscaler_args)
 
-    upscaler.add_qa_head(training.num_degradations)
-    upscaler.add_weight_norms()
+    upscaler.model.add_qa_head(training.num_degradations)
+    upscaler.model.add_weight_norms()
 
     upscaler = upscaler.to(args.device)
 
@@ -183,7 +181,7 @@ def main():
     vgg_loss = VGGLoss().to(args.device)
     combined_loss = AdaptiveMultitaskLoss(4, args.min_loss_weight).to(args.device)
 
-    print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
+    print(f"Upscaler has {upscaler.model.num_trainable_params:,} trainable parameters")
     print(f"Perceptual model has {vgg_loss.num_params:,} parameters")
 
     upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
@@ -214,7 +212,7 @@ def main():
         print("Previous checkpoint resumed successfully")
 
     if args.activation_checkpointing:
-        upscaler.enable_activation_checkpointing()
+        upscaler.model.enable_activation_checkpointing()
 
     print("Training ...")
     upscaler.train()

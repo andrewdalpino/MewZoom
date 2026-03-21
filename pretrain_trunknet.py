@@ -170,7 +170,6 @@ def main():
     upscaler = MewZoom(**upscaler_args)
 
     upscaler.model.add_qa_head(training.num_degradations)
-    upscaler.initialize_weights()
     upscaler.model.add_weight_norms()
 
     upscaler = upscaler.to(args.device)

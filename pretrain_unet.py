@@ -29,7 +29,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.mewzoom.model import MewZoom, Architecture
+from src.mewzoom.model import MewZoom
 from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
@@ -55,8 +55,8 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=64, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=2, type=int)
-    parser.add_argument("--num_epochs", default=150, type=int)
-    parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--num_epochs", default=100, type=int)
+    parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
     parser.add_argument("--min_loss_weight", default=1e-2, type=float)
@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--quaternary_channels", default=384, type=int)
     parser.add_argument("--quaternary_layers", default=8, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
-    parser.add_argument("--attention_hidden_ratio", default=8, type=int)
+    parser.add_argument("--exciter_hidden_ratio", default=8, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
     parser.add_argument("--checkpoint_interval", default=10, type=int)
@@ -165,7 +165,7 @@ def main():
     test_loader = new_dataloader(testing)
 
     upscaler_args = {
-        "architecture": Architecture.UNET,
+        "architecture": "unet",
         "upscale_ratio": args.upscale_ratio,
         "primary_channels": args.primary_channels,
         "primary_layers": args.primary_layers,
@@ -176,12 +176,13 @@ def main():
         "quaternary_channels": args.quaternary_channels,
         "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
-        "attention_hidden_ratio": args.attention_hidden_ratio,
+        "exciter_hidden_ratio": args.exciter_hidden_ratio,
     }
 
     upscaler = MewZoom(**upscaler_args)
 
     upscaler.model.add_qa_head(training.num_degradations)
+    upscaler.initialize_weights()
     upscaler.model.add_weight_norms()
 
     upscaler = upscaler.to(args.device)

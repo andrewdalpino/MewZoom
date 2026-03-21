@@ -65,12 +65,12 @@ def main():
     parser.add_argument("--adversarial_weight", default=0.001, type=float)
     parser.add_argument("--critic_learning_rate", default=3e-4, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=3, type=int)
+    parser.add_argument("--critic_step_ratio", default=2, type=int)
     parser.add_argument("--spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--real_label_jitter", default=0.1, type=float)
     parser.add_argument("--fake_label_jitter", default=0.0, type=float)
     parser.add_argument("--num_epochs", default=50, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=0, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -240,7 +240,7 @@ def main():
         upscaler.model.enable_activation_checkpointing()
         critic.enable_activation_checkpointing()
 
-    print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
+    print(f"Upscaler has {upscaler.model.num_trainable_params:,} trainable parameters")
     print(f"Critic has {critic.num_trainable_params:,} trainable parameters")
 
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)

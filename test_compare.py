@@ -51,7 +51,7 @@ def main():
 
     upscaler.load_state_dict(state_dict)
 
-    upscaler.model.remove_parameterizations()
+    upscaler.remove_parameterizations()
     upscaler.model.remove_qa_head()
 
     upscaler = upscaler.to(args.device)

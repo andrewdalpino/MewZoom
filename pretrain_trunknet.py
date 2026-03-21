@@ -29,7 +29,7 @@ from torchmetrics.image import (
 )
 
 from data import ImageFolder
-from src.mewzoom.model import MewZoom, Architecture
+from src.mewzoom.model import MewZoom
 from loss import VGGLoss, AdaptiveMultitaskLoss
 
 from tqdm import tqdm
@@ -53,9 +53,9 @@ def main():
     parser.add_argument("--contrast_jitter", default=0.15, type=float)
     parser.add_argument("--saturation_jitter", default=0.2, type=float)
     parser.add_argument("--hue_jitter", default=0.03, type=float)
-    parser.add_argument("--batch_size", default=64, type=int)
-    parser.add_argument("--gradient_accumulation_steps", default=2, type=int)
-    parser.add_argument("--num_epochs", default=150, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
+    parser.add_argument("--num_epochs", default=100, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
@@ -159,7 +159,7 @@ def main():
     test_loader = new_dataloader(testing)
 
     upscaler_args = {
-        "architecture": Architecture.TRUNKNET,
+        "architecture": "trunknet",
         "upscale_ratio": args.upscale_ratio,
         "num_channels": args.num_channels,
         "num_layers": args.num_layers,
@@ -170,6 +170,7 @@ def main():
     upscaler = MewZoom(**upscaler_args)
 
     upscaler.model.add_qa_head(training.num_degradations)
+    upscaler.initialize_weights()
     upscaler.model.add_weight_norms()
 
     upscaler = upscaler.to(args.device)

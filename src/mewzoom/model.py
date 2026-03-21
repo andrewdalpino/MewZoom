@@ -1,4 +1,3 @@
-from enum import Enum
 from math import floor, ceil
 from abc import ABC, abstractmethod
 
@@ -21,7 +20,7 @@ from torch.nn import (
     Flatten,
 )
 
-from torch.nn.init import kaiming_uniform_
+from torch.nn.init import kaiming_uniform_, zeros_
 from torch.nn.functional import pad
 
 from torch.nn.utils.parametrize import is_parametrized, remove_parametrizations
@@ -439,7 +438,7 @@ class FanOutProjection(Module):
         self.conv = Conv2d(in_channels, out_channels, kernel_size=1)
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
+        self.conv.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
@@ -467,36 +466,32 @@ class TrunkNet(Module):
 
         assert num_layers >= 4, "Number of layers must be greater than or equal to 4."
 
+        new_encoder_block = partial(
+            EncoderBlock,
+            hidden_ratio=hidden_ratio,
+            exciter_hidden_ratio=exciter_hidden_ratio,
+        )
+
         self.stage1 = Sequential(
-            *[
-                EncoderBlock(num_channels, hidden_ratio)
-                for _ in range(ceil(num_layers / 4))
-            ]
+            *[new_encoder_block(num_channels) for _ in range(ceil(num_layers / 4))]
         )
 
         self.stage2 = Sequential(
-            *[
-                EncoderBlock(num_channels, hidden_ratio)
-                for _ in range(floor(num_layers / 4))
-            ]
+            *[new_encoder_block(num_channels) for _ in range(floor(num_layers / 4))]
         )
 
         self.stage3 = Sequential(
-            *[
-                EncoderBlock(num_channels, hidden_ratio)
-                for _ in range(ceil(num_layers / 4))
-            ]
+            *[new_encoder_block(num_channels) for _ in range(ceil(num_layers / 4))]
         )
 
         self.stage4 = Sequential(
-            *[
-                EncoderBlock(num_channels, hidden_ratio)
-                for _ in range(floor(num_layers / 4))
-            ]
+            *[new_encoder_block(num_channels) for _ in range(floor(num_layers / 4))]
         )
 
-        self.skip1 = LongSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip2 = LongSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip1 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip2 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip3 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip4 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
 
         self.qa_head = None
 
@@ -509,8 +504,8 @@ class TrunkNet(Module):
             for layer in stage:
                 layer.initialize_weights()
 
-        self.skip1.initialize_weights()
-        self.skip2.initialize_weights()
+        for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
+            layer.initialize_weights()
 
         if isinstance(self.qa_head, QAHead):
             self.qa_head.initialize_weights()
@@ -526,8 +521,8 @@ class TrunkNet(Module):
             for layer in stage:
                 layer.add_weight_norms()
 
-        self.skip1.add_weight_norms()
-        self.skip2.add_weight_norms()
+        for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
+            layer.add_weight_norms()
 
         if isinstance(self.qa_head, QAHead):
             self.qa_head.add_weight_norms()
@@ -542,21 +537,21 @@ class TrunkNet(Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor | None]:
         z1 = self.checkpoint(self.stage1, x)
+        z1 = self.skip1.forward(x, z1)
 
         z2 = self.checkpoint(self.stage2, z1)
+        z2 = self.skip2.forward(z1, z2)
 
         if isinstance(self.qa_head, QAHead):
             z_qa = self.qa_head.forward(z2)
         else:
             z_qa = None
 
-        z2 = self.skip1.forward(z1, z2)
-
         z3 = self.checkpoint(self.stage3, z2)
-
-        z3 = self.skip2.forward(z2, z3)
+        z3 = self.skip3.forward(z2, z3)
 
         z4 = self.checkpoint(self.stage4, z3)
+        z4 = self.skip4.forward(z3, z4)
 
         return z4, z_qa
 
@@ -603,6 +598,7 @@ class UNet(Module):
             quaternary_channels,
             ceil(quaternary_layers / 2),
             hidden_ratio,
+            exciter_hidden_ratio,
         )
 
         self.decoder = Decoder(
@@ -681,6 +677,7 @@ class Encoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -696,32 +693,26 @@ class Encoder(Module):
             quaternary_layers > 0
         ), "Number of quaternary layers must be greater than 0."
 
+        new_encoder_block = partial(
+            EncoderBlock,
+            hidden_ratio=hidden_ratio,
+            exciter_hidden_ratio=exciter_hidden_ratio,
+        )
+
         self.stage1 = Sequential(
-            *[
-                EncoderBlock(primary_channels, hidden_ratio)
-                for _ in range(primary_layers)
-            ]
+            *[new_encoder_block(primary_channels) for _ in range(primary_layers)]
         )
 
         self.stage2 = Sequential(
-            *[
-                EncoderBlock(secondary_channels, hidden_ratio)
-                for _ in range(secondary_layers)
-            ]
+            *[new_encoder_block(secondary_channels) for _ in range(secondary_layers)]
         )
 
         self.stage3 = Sequential(
-            *[
-                EncoderBlock(tertiary_channels, hidden_ratio)
-                for _ in range(tertiary_layers)
-            ]
+            *[new_encoder_block(tertiary_channels) for _ in range(tertiary_layers)]
         )
 
         self.stage4 = Sequential(
-            *[
-                EncoderBlock(quaternary_channels, hidden_ratio)
-                for _ in range(quaternary_layers)
-            ]
+            *[new_encoder_block(quaternary_channels) for _ in range(quaternary_layers)]
         )
 
         self.downsample1 = PixelCrush(primary_channels, secondary_channels, 2)
@@ -819,41 +810,35 @@ class Decoder(Module):
             quaternary_layers > 0
         ), "Number of quaternary layers must be greater than 0."
 
+        new_decoder_block = partial(
+            DecoderBlock,
+            hidden_ratio=hidden_ratio,
+            exciter_hidden_ratio=exciter_hidden_ratio,
+        )
+
         self.stage1 = Sequential(
-            *[
-                DecoderBlock(primary_channels, hidden_ratio)
-                for _ in range(primary_layers)
-            ]
+            *[new_decoder_block(primary_channels) for _ in range(primary_layers)]
         )
 
         self.stage2 = Sequential(
-            *[
-                DecoderBlock(secondary_channels, hidden_ratio)
-                for _ in range(secondary_layers)
-            ]
+            *[new_decoder_block(secondary_channels) for _ in range(secondary_layers)]
         )
 
         self.stage3 = Sequential(
-            *[
-                DecoderBlock(tertiary_channels, hidden_ratio)
-                for _ in range(tertiary_layers)
-            ]
+            *[new_decoder_block(tertiary_channels) for _ in range(tertiary_layers)]
         )
 
         self.stage4 = Sequential(
-            *[
-                DecoderBlock(quaternary_channels, hidden_ratio)
-                for _ in range(quaternary_layers)
-            ]
+            *[new_decoder_block(quaternary_channels) for _ in range(quaternary_layers)]
         )
 
         self.upsample1 = SubpixelConv2d(primary_channels, secondary_channels, 2)
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
 
-        self.skip1 = LongSkipConnection(secondary_channels, exciter_hidden_ratio)
-        self.skip2 = LongSkipConnection(tertiary_channels, exciter_hidden_ratio)
-        self.skip3 = LongSkipConnection(quaternary_channels, exciter_hidden_ratio)
+        self.skip1 = AdaptiveSkipConnection(secondary_channels, exciter_hidden_ratio)
+        self.skip2 = AdaptiveSkipConnection(tertiary_channels, exciter_hidden_ratio)
+        self.skip3 = AdaptiveSkipConnection(quaternary_channels, exciter_hidden_ratio)
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 
@@ -865,6 +850,10 @@ class Decoder(Module):
         self.upsample1.initialize_weights()
         self.upsample2.initialize_weights()
         self.upsample3.initialize_weights()
+
+        self.skip1.initialize_weights()
+        self.skip2.initialize_weights()
+        self.skip3.initialize_weights()
 
     def freeze_weights(self) -> None:
         for param in self.parameters():
@@ -882,6 +871,10 @@ class Decoder(Module):
         self.upsample1.add_weight_norms()
         self.upsample2.add_weight_norms()
         self.upsample3.add_weight_norms()
+
+        self.skip1.add_weight_norms()
+        self.skip2.add_weight_norms()
+        self.skip3.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -965,21 +958,24 @@ class Decoder(Module):
 class EncoderBlock(Module):
     """A single encoder block consisting of a small convolutional network and a residual connection."""
 
-    def __init__(self, num_channels: int, hidden_ratio: int):
+    def __init__(self, num_channels: int, hidden_ratio: int, exciter_hidden_ratio: int):
         super().__init__()
 
         self.convnet = InvertedBottleneck(num_channels, hidden_ratio)
 
-        self.skip = ResidualConnection()
+        self.skip = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
 
     def initialize_weights(self) -> None:
         self.convnet.initialize_weights()
+        self.skip.initialize_weights()
 
     def add_weight_norms(self) -> None:
         self.convnet.add_weight_norms()
+        self.skip.add_weight_norms()
 
     def add_spectral_norms(self, num_iterations: int) -> None:
         self.convnet.add_spectral_norms(num_iterations)
+        self.skip.add_spectral_norms(num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.convnet.forward(x)
@@ -1014,8 +1010,8 @@ class InvertedBottleneck(Module):
         self.silu = SiLU()
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv1.weight)
-        kaiming_uniform_(self.conv2.weight)
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv1 = weight_norm(self.conv1)
@@ -1033,21 +1029,12 @@ class InvertedBottleneck(Module):
         return z
 
 
-class ResidualConnection(Module):
+class AdaptiveSkipConnection(Module):
     """
-    An equally-weighted residual connection that adds the input to the residual feature maps.
+    A residual connection that selectively brings forward feature maps from the input based on
+    the output of the current layer.
     """
 
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: Tensor, z: Tensor) -> Tensor:
-        assert x.shape == z.shape, "Input and residual must have the same shape."
-
-        return x + z
-
-
-class LongSkipConnection(Module):
     def __init__(self, num_channels: int, exciter_hidden_ratio: int):
         super().__init__()
 
@@ -1071,7 +1058,7 @@ class LongSkipConnection(Module):
 
 
 class ChannelAttention(Module):
-    """A channel-wise attention mechanism for reweighting feature maps."""
+    """A channel-wise cross-attention mechanism for reweighting feature maps."""
 
     def __init__(self, num_channels: int, exciter_hidden_ratio: int):
         super().__init__()
@@ -1124,8 +1111,8 @@ class Exciter(Module):
         self.silu = SiLU()
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv1.weight)
-        kaiming_uniform_(self.conv2.weight)
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv1 = weight_norm(self.conv1)
@@ -1167,7 +1154,7 @@ class PixelCrush(Module):
         )
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
+        self.conv.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
@@ -1209,10 +1196,13 @@ class SubpixelConv2d(Module):
         self.shuffle = PixelShuffle(upscale_ratio)
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv.weight)
+        self.conv.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv = weight_norm(self.conv)
+
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.conv.forward(x)
@@ -1242,8 +1232,8 @@ class QAHead(Module):
         self.flatten = Flatten(start_dim=1)
 
     def initialize_weights(self) -> None:
-        kaiming_uniform_(self.conv1.weight)
-        kaiming_uniform_(self.conv2.weight)
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
 
     def add_weight_norms(self) -> None:
         self.conv1 = weight_norm(self.conv1)
@@ -1329,6 +1319,7 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
                 raise ValueError("Invalid model size.")
 
         hidden_ratio = 2
+        exciter_hidden_ratio = 8
 
         return cls(
             primary_channels,
@@ -1340,6 +1331,7 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            exciter_hidden_ratio,
         )
 
     def __init__(
@@ -1353,6 +1345,7 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        exciter_hidden_ratio: int,
     ):
         super().__init__()
 
@@ -1368,6 +1361,7 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            exciter_hidden_ratio,
         )
 
         self.head = PatchDiscriminator(quaternary_channels)

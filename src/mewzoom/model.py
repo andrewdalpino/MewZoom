@@ -20,7 +20,6 @@ from torch.nn import (
     Flatten,
 )
 
-from torch.nn.init import kaiming_uniform_, zeros_
 from torch.nn.functional import pad
 
 from torch.nn.utils.parametrize import is_parametrized, remove_parametrizations
@@ -488,10 +487,10 @@ class TrunkNet(Module):
             *[new_encoder_block(num_channels) for _ in range(floor(num_layers / 4))]
         )
 
-        self.skip1 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip2 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip3 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip4 = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip1 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip2 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip3 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip4 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
 
         self.qa_head = None
 
@@ -507,11 +506,11 @@ class TrunkNet(Module):
         for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
             layer.initialize_weights()
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             self.qa_head.initialize_weights()
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = QAHead(self.num_channels, num_features)
+        self.qa_head = GlobalQAHead(self.num_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -524,7 +523,7 @@ class TrunkNet(Module):
         for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
             layer.add_weight_norms()
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -542,7 +541,7 @@ class TrunkNet(Module):
         z2 = self.checkpoint(self.stage2, z1)
         z2 = self.skip2.forward(z1, z2)
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             z_qa = self.qa_head.forward(z2)
         else:
             z_qa = None
@@ -619,7 +618,7 @@ class UNet(Module):
         self.quaternary_channels = quaternary_channels
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = QAHead(self.quaternary_channels, num_features)
+        self.qa_head = GlobalQAHead(self.quaternary_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -628,7 +627,7 @@ class UNet(Module):
         self.encoder.initialize_weights()
         self.decoder.initialize_weights()
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             self.qa_head.initialize_weights()
 
     def freeze_weights(self) -> None:
@@ -643,7 +642,7 @@ class UNet(Module):
         self.encoder.add_weight_norms()
         self.decoder.add_weight_norms()
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -653,7 +652,7 @@ class UNet(Module):
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         z1, z2, z3, z4 = self.encoder.forward(x)
 
-        if isinstance(self.qa_head, QAHead):
+        if isinstance(self.qa_head, GlobalQAHead):
             z_qa = self.qa_head.forward(z4)
         else:
             z_qa = None
@@ -726,9 +725,8 @@ class Encoder(Module):
             for layer in stage:
                 layer.initialize_weights()
 
-        self.downsample1.initialize_weights()
-        self.downsample2.initialize_weights()
-        self.downsample3.initialize_weights()
+        for layer in [self.downsample1, self.downsample2, self.downsample3]:
+            layer.initialize_weights()
 
     def freeze_weights(self) -> None:
         for param in self.parameters():
@@ -743,18 +741,16 @@ class Encoder(Module):
             for layer in stage:
                 layer.add_weight_norms()
 
-        self.downsample1.add_weight_norms()
-        self.downsample2.add_weight_norms()
-        self.downsample3.add_weight_norms()
+        for layer in [self.downsample1, self.downsample2, self.downsample3]:
+            layer.add_weight_norms()
 
     def add_spectral_norms(self, num_iterations: int) -> None:
         for stage in [self.stage1, self.stage2, self.stage3, self.stage4]:
             for layer in stage:
                 layer.add_spectral_norms(num_iterations)
 
-        self.downsample1.add_spectral_norms(num_iterations)
-        self.downsample2.add_spectral_norms(num_iterations)
-        self.downsample3.add_spectral_norms(num_iterations)
+        for layer in [self.downsample1, self.downsample2, self.downsample3]:
+            layer.add_spectral_norms(num_iterations)
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -836,9 +832,9 @@ class Decoder(Module):
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
 
-        self.skip1 = AdaptiveSkipConnection(secondary_channels, exciter_hidden_ratio)
-        self.skip2 = AdaptiveSkipConnection(tertiary_channels, exciter_hidden_ratio)
-        self.skip3 = AdaptiveSkipConnection(quaternary_channels, exciter_hidden_ratio)
+        self.skip1 = GatedSkipConnection(secondary_channels, exciter_hidden_ratio)
+        self.skip2 = GatedSkipConnection(tertiary_channels, exciter_hidden_ratio)
+        self.skip3 = GatedSkipConnection(quaternary_channels, exciter_hidden_ratio)
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 
@@ -847,13 +843,11 @@ class Decoder(Module):
             for layer in stage:
                 layer.initialize_weights()
 
-        self.upsample1.initialize_weights()
-        self.upsample2.initialize_weights()
-        self.upsample3.initialize_weights()
+        for layer in [self.upsample1, self.upsample2, self.upsample3]:
+            layer.initialize_weights()
 
-        self.skip1.initialize_weights()
-        self.skip2.initialize_weights()
-        self.skip3.initialize_weights()
+        for layer in [self.skip1, self.skip2, self.skip3]:
+            layer.initialize_weights()
 
     def freeze_weights(self) -> None:
         for param in self.parameters():
@@ -868,13 +862,11 @@ class Decoder(Module):
             for layer in stage:
                 layer.add_weight_norms()
 
-        self.upsample1.add_weight_norms()
-        self.upsample2.add_weight_norms()
-        self.upsample3.add_weight_norms()
+        for layer in [self.upsample1, self.upsample2, self.upsample3]:
+            layer.add_weight_norms()
 
-        self.skip1.add_weight_norms()
-        self.skip2.add_weight_norms()
-        self.skip3.add_weight_norms()
+        for layer in [self.skip1, self.skip2, self.skip3]:
+            layer.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
         """
@@ -963,7 +955,7 @@ class EncoderBlock(Module):
 
         self.convnet = InvertedBottleneck(num_channels, hidden_ratio)
 
-        self.skip = AdaptiveSkipConnection(num_channels, exciter_hidden_ratio)
+        self.skip = GatedSkipConnection(num_channels, exciter_hidden_ratio)
 
     def initialize_weights(self) -> None:
         self.convnet.initialize_weights()
@@ -979,6 +971,7 @@ class EncoderBlock(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.convnet.forward(x)
+
         z = self.skip.forward(x, z)
 
         return z
@@ -989,7 +982,7 @@ class DecoderBlock(EncoderBlock):
 
 
 class InvertedBottleneck(Module):
-    """A wide non-linear activation block with convolutions."""
+    """A two-layer convnet with wide non-linear activation pathway."""
 
     def __init__(self, num_channels: int, hidden_ratio: int):
         super().__init__()
@@ -1029,7 +1022,7 @@ class InvertedBottleneck(Module):
         return z
 
 
-class AdaptiveSkipConnection(Module):
+class GatedSkipConnection(Module):
     """
     A residual connection that selectively brings forward feature maps from the input based on
     the output of the current layer.
@@ -1081,15 +1074,21 @@ class ChannelAttention(Module):
         self.exciter.add_spectral_norms(num_iterations)
 
     def forward(self, x1: Tensor, x2: Tensor) -> Tensor:
+        assert (
+            x1.shape[:2] == x2.shape[:2]
+        ), "X1 and X2 must have the same batch size and number of channels."
+
         z = self.pool.forward(x2)
         z = self.exciter.forward(z)
         z = self.sigmoid.forward(z)
+
+        z = z.expand_as(x1)
 
         return z * x1
 
 
 class Exciter(Module):
-    """A small non-linear squeeze and excitation network."""
+    """A small non-linear excitation network."""
 
     def __init__(self, num_channels: int, hidden_ratio: int):
         super().__init__()
@@ -1211,8 +1210,8 @@ class SubpixelConv2d(Module):
         return z
 
 
-class QAHead(Module):
-    """A decoder head for estimating the amount of degradation present in the input image."""
+class GlobalQAHead(Module):
+    """A head for estimating the amount of global degradation present in the input image."""
 
     def __init__(self, num_channels: int, num_features: int):
         super().__init__()
@@ -1287,38 +1286,38 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
         match model_size:
             case "small":
                 primary_channels = 48
-                primary_layers = 3
+                primary_layers = 1
                 secondary_channels = 96
-                secondary_layers = 3
+                secondary_layers = 1
                 tertiary_channels = 192
-                tertiary_layers = 3
+                tertiary_layers = 1
                 quaternary_channels = 384
-                quaternary_layers = 3
+                quaternary_layers = 1
 
             case "medium":
                 primary_channels = 64
-                primary_layers = 4
+                primary_layers = 2
                 secondary_channels = 128
-                secondary_layers = 4
+                secondary_layers = 2
                 tertiary_channels = 256
-                tertiary_layers = 4
+                tertiary_layers = 2
                 quaternary_channels = 512
-                quaternary_layers = 4
+                quaternary_layers = 2
 
             case "large":
                 primary_channels = 96
-                primary_layers = 5
+                primary_layers = 3
                 secondary_channels = 192
-                secondary_layers = 5
+                secondary_layers = 3
                 tertiary_channels = 384
-                tertiary_layers = 5
+                tertiary_layers = 3
                 quaternary_channels = 768
-                quaternary_layers = 5
+                quaternary_layers = 3
 
             case _:
                 raise ValueError("Invalid model size.")
 
-        hidden_ratio = 2
+        hidden_ratio = 1
         exciter_hidden_ratio = 8
 
         return cls(
@@ -1366,6 +1365,8 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
 
         self.head = PatchDiscriminator(quaternary_channels)
 
+        self.sigmoid = Sigmoid()
+
     @property
     def num_trainable_params(self) -> int:
         return sum(param.numel() for param in self.parameters() if param.requires_grad)
@@ -1392,23 +1393,23 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
 
         self.body.enable_activation_checkpointing()
 
-    def forward(self, x: Tensor) -> tuple[Tensor, ...]:
+    def forward(self, x: Tensor) -> Tensor:
         z = self.stem.forward(x)
 
-        z1, z2, z3, z4 = self.body.forward(z)
+        _, _, _, z4 = self.body.forward(z)
 
-        z5 = self.head.forward(z4)
+        z = self.head.forward(z4)
 
-        return z1, z2, z3, z4, z5
-
-    @torch.no_grad()
+        return z
+    
+    @torch.inference_mode()
     def predict(self, x: Tensor) -> Tensor:
-        """Return the probabilities that patches of the input image are real or fake."""
+        """Convenience method for inference."""
 
-        _, _, _, _, z5 = self.forward(x)
-
-        return z5
-
+        z = self.forward(x)
+        z = self.sigmoid.forward(z)
+        
+        return z
 
 class PatchDiscriminator(Module):
     """
@@ -1430,6 +1431,29 @@ class PatchDiscriminator(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.downsample.forward(x)
+        z = self.conv.forward(z)
+
+        return z
+    
+
+class GlobalDiscriminator(Module):
+    """
+    A global discriminator head for estimating the probability that the entire input image is
+    real or fake.
+    """
+
+    def __init__(self, num_channels: int):
+        super().__init__()
+
+        self.pool = AdaptiveAvgPool2d(1)
+
+        self.conv = Conv2d(num_channels, 1, kernel_size=1, bias=False)
+
+    def add_spectral_norms(self, num_iterations: int) -> None:
+        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
+
+    def forward(self, x: Tensor) -> Tensor:
+        z = self.pool.forward(x)
         z = self.conv.forward(z)
 
         return z

@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--quaternary_channels", default=384, type=int)
     parser.add_argument("--quaternary_layers", default=8, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
-    parser.add_argument("--exciter_hidden_ratio", default=8, type=int)
+    parser.add_argument("--exciter_hidden_ratio", default=4, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
     parser.add_argument("--checkpoint_interval", default=10, type=int)

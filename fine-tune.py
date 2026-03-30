@@ -31,8 +31,8 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.mewzoom.model import MewZoom, Bouncer
-from loss import RelativisticBCELoss, WeightedMultitaskLoss
-from metrics import PatchF1Score
+from loss import RelativisticBCELoss, WeightedMultitaskLoss, AdaptiveMultitaskLoss
+from metrics import F1Score
 
 from tqdm import tqdm
 
@@ -56,16 +56,15 @@ def main():
     parser.add_argument("--saturation_jitter", default=0.2, type=float)
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=8, type=int)
-    parser.add_argument("--gradient_accumulation_steps", default=16, type=int)
+    parser.add_argument("--gradient_accumulation_steps", default=8, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--pixel_weight", default=1.0, type=float)
-    parser.add_argument("--perceptual_weight", default=10.0, type=float)
     parser.add_argument("--degradation_weight", default=0.1, type=float)
     parser.add_argument("--adversarial_weight", default=0.001, type=float)
-    parser.add_argument("--critic_learning_rate", default=3e-4, type=float)
+    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=2, type=int)
+    parser.add_argument("--critic_step_ratio", default=1, type=int)
     parser.add_argument("--spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--real_label_jitter", default=0.1, type=float)
     parser.add_argument("--fake_label_jitter", default=0.0, type=float)
@@ -210,7 +209,6 @@ def main():
     combined_loss = WeightedMultitaskLoss(
         [
             args.pixel_weight,
-            args.perceptual_weight,
             args.degradation_weight,
             args.adversarial_weight,
         ]
@@ -246,7 +244,7 @@ def main():
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
     ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
     vif_metric = VisualInformationFidelity().to(args.device)
-    f1_metric = PatchF1Score().to(args.device)
+    f1_metric = F1Score().to(args.device)
 
     print("Fine-tuning ...")
 
@@ -254,7 +252,7 @@ def main():
     critic.train()
 
     for epoch in range(starting_epoch, args.num_epochs + 1):
-        total_pixel_loss, total_perceptual_loss, total_degradation_loss = 0.0, 0.0, 0.0
+        total_pixel_loss, total_degradation_loss = 0.0, 0.0
         total_u_bce, total_c_bce = 0.0, 0.0
         total_u_gradient_norm, total_c_gradient_norm = 0.0, 0.0
         total_upscaler_batches, total_critic_batches = 0, 0
@@ -279,8 +277,8 @@ def main():
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
 
-                _, _, _, _, c_pred_real = critic.forward(y_orig)
-                _, _, _, _, c_pred_fake = critic.forward(u_pred_sr.detach())
+                c_pred_real = critic.forward(y_orig)
+                c_pred_fake = critic.forward(u_pred_sr.detach())
 
                 c_bce = bce_loss.forward_critic(c_pred_fake, c_pred_real)
 
@@ -309,18 +307,14 @@ def main():
                 with amp_context:
                     pixel_loss = l1_loss.forward(u_pred_sr, y_orig)
 
-                    _, z2_fake, _, _, c_pred_fake = critic.forward(u_pred_sr)
-                    _, z2_real, _, _, c_pred_real = critic.forward(y_orig)
-
-                    perceptual_loss = l2_loss.forward(z2_fake, z2_real.detach())
-
                     degradation_loss = l2_loss.forward(u_pred_deg, y_deg)
+
+                    c_pred_fake = critic.forward(u_pred_sr)
+                    c_pred_real = critic.forward(y_orig)
 
                     u_bce = bce_loss.forward_upscaler(c_pred_fake, c_pred_real.detach())
 
-                    losses = torch.stack(
-                        [pixel_loss, perceptual_loss, degradation_loss, u_bce]
-                    )
+                    losses = torch.stack([pixel_loss, degradation_loss, u_bce])
 
                     u_loss = combined_loss.forward(losses)
 
@@ -346,7 +340,6 @@ def main():
                     total_upscaler_steps += 1
 
                 total_pixel_loss += pixel_loss.item()
-                total_perceptual_loss += perceptual_loss.item()
                 total_degradation_loss += degradation_loss.item()
                 total_u_bce += u_bce.item()
 
@@ -357,7 +350,6 @@ def main():
         total_upscaler_steps = max(1, total_upscaler_steps)
 
         average_pixel_loss = total_pixel_loss / total_upscaler_batches
-        average_perceptual_loss = total_perceptual_loss / total_upscaler_batches
         average_degradation_loss = total_degradation_loss / total_upscaler_batches
         average_u_bce = total_u_bce / total_upscaler_batches
         average_c_bce = total_c_bce / total_critic_batches
@@ -366,7 +358,6 @@ def main():
         average_c_gradient_norm = total_c_gradient_norm / total_critic_steps
 
         logger.add_scalar("Pixel L1", average_pixel_loss, epoch)
-        logger.add_scalar("Perceptual L2", average_perceptual_loss, epoch)
         logger.add_scalar("Degradation L2", average_degradation_loss, epoch)
         logger.add_scalar("Upscaler BCE", average_u_bce, epoch)
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
@@ -376,7 +367,6 @@ def main():
         print(
             f"Epoch {epoch}:",
             f"Pixel L1: {average_pixel_loss:.5},",
-            f"Perceptual L2: {average_perceptual_loss:.5},",
             f"Degradation L2: {average_degradation_loss:.5},",
             f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",

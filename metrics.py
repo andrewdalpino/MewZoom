@@ -7,7 +7,7 @@ from torch.nn import Module
 from torchmetrics.classification import BinaryPrecision, BinaryRecall
 
 
-class PatchF1Score(Module):
+class F1Score(Module):
     """Computes the F1 score on patches."""
 
     def __init__(self):

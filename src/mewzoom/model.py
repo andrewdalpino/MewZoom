@@ -37,75 +37,19 @@ class Upscaler(ABC):
     """An interface for upscaler models."""
 
     @abstractmethod
-    def initialize_weights(self) -> None:
-        """Initialize all model weights."""
-
-        pass
-
-    @abstractmethod
     def upscale(self, x: Tensor) -> Tensor:
-        """
-        Upscale the input image tensor.
-
-        Args:
-            x: Input image tensor of shape (B, 3, H, W).
-        """
-
         pass
 
 
-class WeightNormalizer(ABC):
-    """An interface for adding weight normalization parameterization."""
+class Critic(ABC):
+    """An interface for critic networks."""
 
     @abstractmethod
-    def add_weight_norms(self) -> None:
-        """Add weight normalization parameterization to the network."""
-
+    def predict(self, x: Tensor) -> Tensor:
         pass
 
 
-class SpectralNormalizer(ABC):
-    """An interface for adding spectral normalization parameterization."""
-
-    @abstractmethod
-    def add_spectral_norms(self, num_iterations: int) -> None:
-        """Add spectral normalization parameterization to the network."""
-
-        pass
-
-
-class ActivationCheckpointer(ABC):
-    """An interface for enabling activation checkpointing."""
-
-    @abstractmethod
-    def enable_activation_checkpointing(self) -> None:
-        """
-        Instead of memorizing the activations of the forward pass, recompute them
-        at every checkpoint.
-        """
-
-        pass
-
-
-class QualityAssessor(ABC):
-    """An interface for adding a quality assessment head to predict degradation features."""
-
-    @abstractmethod
-    def add_qa_head(self, num_features: int) -> None:
-        """Add a quality assessment head to predict degradation features."""
-
-        pass
-
-    @abstractmethod
-    def remove_qa_head(self) -> None:
-        """Remove the quality assessment head."""
-
-        pass
-
-
-class MewZoomTrunkNet(
-    Upscaler, WeightNormalizer, ActivationCheckpointer, QualityAssessor, Module
-):
+class MewZoomTrunkNet(Upscaler, Module):
     """
     A fast single-image super-resolution model with a deep low-resolution encoder network
     and high-resolution sub-pixel convolutional decoder head.
@@ -207,9 +151,7 @@ class MewZoomTrunkNet(
         return z
 
 
-class MewZoomUNet(
-    Upscaler, WeightNormalizer, ActivationCheckpointer, QualityAssessor, Module
-):
+class MewZoomUNet(Upscaler, Module):
     """
     A model for image super-resolution based on a U-Net.
     """
@@ -338,7 +280,7 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
             num_channels=64,
             num_layers=8,
             hidden_ratio=2,
-            exciter_hidden_ratio=8,
+            exciter_hidden_ratio=4,
         )
 
         model = MewZoom(
@@ -353,7 +295,7 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
             quaternary_channels=512,
             quaternary_layers=2,
             hidden_ratio=2,
-            exciter_hidden_ratio=8,
+            exciter_hidden_ratio=4,
         )
     """
 
@@ -506,11 +448,11 @@ class TrunkNet(Module):
         for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
             layer.initialize_weights()
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             self.qa_head.initialize_weights()
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = GlobalQAHead(self.num_channels, num_features)
+        self.qa_head = GlobalQualityAssessor(self.num_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -523,7 +465,7 @@ class TrunkNet(Module):
         for layer in [self.skip1, self.skip2, self.skip3, self.skip4]:
             layer.add_weight_norms()
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -541,7 +483,7 @@ class TrunkNet(Module):
         z2 = self.checkpoint(self.stage2, z1)
         z2 = self.skip2.forward(z1, z2)
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             z_qa = self.qa_head.forward(z2)
         else:
             z_qa = None
@@ -618,7 +560,7 @@ class UNet(Module):
         self.quaternary_channels = quaternary_channels
 
     def add_qa_head(self, num_features: int) -> None:
-        self.qa_head = GlobalQAHead(self.quaternary_channels, num_features)
+        self.qa_head = GlobalQualityAssessor(self.quaternary_channels, num_features)
 
     def remove_qa_head(self) -> None:
         self.qa_head = None
@@ -627,7 +569,7 @@ class UNet(Module):
         self.encoder.initialize_weights()
         self.decoder.initialize_weights()
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             self.qa_head.initialize_weights()
 
     def freeze_weights(self) -> None:
@@ -642,7 +584,7 @@ class UNet(Module):
         self.encoder.add_weight_norms()
         self.decoder.add_weight_norms()
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             self.qa_head.add_weight_norms()
 
     def enable_activation_checkpointing(self) -> None:
@@ -652,7 +594,7 @@ class UNet(Module):
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         z1, z2, z3, z4 = self.encoder.forward(x)
 
-        if isinstance(self.qa_head, GlobalQAHead):
+        if isinstance(self.qa_head, GlobalQualityAssessor):
             z_qa = self.qa_head.forward(z4)
         else:
             z_qa = None
@@ -1051,7 +993,7 @@ class GatedSkipConnection(Module):
 
 
 class ChannelAttention(Module):
-    """A channel-wise cross-attention mechanism for reweighting feature maps."""
+    """A channel-wise attention mechanism for reweighting feature maps."""
 
     def __init__(self, num_channels: int, exciter_hidden_ratio: int):
         super().__init__()
@@ -1210,8 +1152,8 @@ class SubpixelConv2d(Module):
         return z
 
 
-class GlobalQAHead(Module):
-    """A head for estimating the amount of global degradation present in the input image."""
+class GlobalQualityAssessor(Module):
+    """A multi-regression head for estimating the total amount of degradation present in the input image."""
 
     def __init__(self, num_channels: int, num_features: int):
         super().__init__()
@@ -1220,28 +1162,21 @@ class GlobalQAHead(Module):
             num_features > 0
         ), "Number of degradation features must be greater than 0."
 
-        self.conv1 = Conv2d(
-            num_channels, num_channels, kernel_size=3, padding=1, bias=False
-        )
-
-        self.conv2 = Conv2d(num_channels, num_features, kernel_size=1)
-
         self.pool = AdaptiveAvgPool2d(1)
+
+        self.conv = Conv2d(num_channels, num_features, kernel_size=1)
 
         self.flatten = Flatten(start_dim=1)
 
     def initialize_weights(self) -> None:
-        self.conv1.reset_parameters()
-        self.conv2.reset_parameters()
+        self.conv.reset_parameters()
 
     def add_weight_norms(self) -> None:
-        self.conv1 = weight_norm(self.conv1)
-        self.conv2 = weight_norm(self.conv2)
+        self.conv = weight_norm(self.conv)
 
     def forward(self, x: Tensor) -> Tensor:
-        z = self.conv1.forward(x)
-        z = self.pool.forward(z)
-        z = self.conv2.forward(z)
+        z = self.pool.forward(x)
+        z = self.conv.forward(z)
         z = self.flatten.forward(z)
 
         return z
@@ -1274,8 +1209,8 @@ class SuperResolver(Module):
         return z
 
 
-class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
-    """A critic network for detecting real and fake images for adversarial training."""
+class Bouncer(Critic, Module):
+    """A discriminator network for detecting real and fake images for adversarial training."""
 
     AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}
 
@@ -1317,7 +1252,7 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
             case _:
                 raise ValueError("Invalid model size.")
 
-        hidden_ratio = 1
+        hidden_ratio = 2
         exciter_hidden_ratio = 8
 
         return cls(
@@ -1401,15 +1336,16 @@ class Bouncer(SpectralNormalizer, ActivationCheckpointer, Module):
         z = self.head.forward(z4)
 
         return z
-    
+
     @torch.inference_mode()
     def predict(self, x: Tensor) -> Tensor:
         """Convenience method for inference."""
 
         z = self.forward(x)
         z = self.sigmoid.forward(z)
-        
+
         return z
+
 
 class PatchDiscriminator(Module):
     """
@@ -1431,29 +1367,6 @@ class PatchDiscriminator(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.downsample.forward(x)
-        z = self.conv.forward(z)
-
-        return z
-    
-
-class GlobalDiscriminator(Module):
-    """
-    A global discriminator head for estimating the probability that the entire input image is
-    real or fake.
-    """
-
-    def __init__(self, num_channels: int):
-        super().__init__()
-
-        self.pool = AdaptiveAvgPool2d(1)
-
-        self.conv = Conv2d(num_channels, 1, kernel_size=1, bias=False)
-
-    def add_spectral_norms(self, num_iterations: int) -> None:
-        self.conv = spectral_norm(self.conv, n_power_iterations=num_iterations)
-
-    def forward(self, x: Tensor) -> Tensor:
-        z = self.pool.forward(x)
         z = self.conv.forward(z)
 
         return z

@@ -31,8 +31,8 @@ from torchmetrics.image import (
 
 from data import ImageFolder
 from src.mewzoom.model import MewZoom, Bouncer
-from loss import RelativisticBCELoss, WeightedMultitaskLoss, AdaptiveMultitaskLoss
-from metrics import F1Score
+from loss import RelativisticBCELoss, WeightedMultitaskLoss
+from metrics import RelativisticF1Score
 
 from tqdm import tqdm
 
@@ -58,18 +58,18 @@ def main():
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=8, type=int)
     parser.add_argument("--upscaler_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--upscaler_momentum_decay", default=0.1, type=float)
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--pixel_weight", default=1.0, type=float)
     parser.add_argument("--degradation_weight", default=0.1, type=float)
     parser.add_argument("--adversarial_weight", default=0.001, type=float)
-    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
+    parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--critic_momentum_decay", default=0.1, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--critic_step_ratio", default=1, type=int)
-    parser.add_argument("--spectral_norm_iterations", default=1, type=int)
-    parser.add_argument("--real_label_jitter", default=0.1, type=float)
-    parser.add_argument("--fake_label_jitter", default=0.0, type=float)
+    parser.add_argument("--critic_spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--num_epochs", default=50, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=0, type=int)
+    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -198,13 +198,13 @@ def main():
 
     critic = Bouncer.from_preconfigured(**critic_args)
 
-    critic.add_spectral_norms(args.spectral_norm_iterations)
+    critic.add_spectral_norms(args.critic_spectral_norm_iterations)
 
     critic = critic.to(args.device)
 
     l1_loss = L1Loss()
     l2_loss = MSELoss()
-    bce_loss = RelativisticBCELoss(args.real_label_jitter, args.fake_label_jitter)
+    bce_loss = RelativisticBCELoss()
 
     combined_loss = WeightedMultitaskLoss(
         [
@@ -214,8 +214,17 @@ def main():
         ]
     ).to(args.device)
 
-    upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)
-    critic_optimizer = AdamW(critic.parameters(), lr=args.critic_learning_rate)
+    upscaler_optimizer = AdamW(
+        upscaler.parameters(),
+        lr=args.upscaler_learning_rate,
+        betas=(1.0 - args.upscaler_momentum_decay, 0.999),
+    )
+
+    critic_optimizer = AdamW(
+        critic.parameters(),
+        lr=args.critic_learning_rate,
+        betas=(1.0 - args.critic_momentum_decay, 0.999),
+    )
 
     starting_epoch = 1
 
@@ -239,12 +248,12 @@ def main():
         critic.enable_activation_checkpointing()
 
     print(f"Upscaler has {upscaler.model.num_trainable_params:,} trainable parameters")
-    print(f"Critic has {critic.num_trainable_params:,} trainable parameters")
+    print(f"Bouncer has {critic.num_trainable_params:,} trainable parameters")
 
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(args.device)
     ssim_metric = StructuralSimilarityIndexMeasure().to(args.device)
     vif_metric = VisualInformationFidelity().to(args.device)
-    f1_metric = F1Score().to(args.device)
+    f1_metric = RelativisticF1Score().to(args.device)
 
     print("Fine-tuning ...")
 
@@ -277,8 +286,8 @@ def main():
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
 
-                c_pred_real = critic.forward(y_orig)
                 c_pred_fake = critic.forward(u_pred_sr.detach())
+                c_pred_real = critic.forward(y_orig)
 
                 c_bce = bce_loss.forward_critic(c_pred_fake, c_pred_real)
 
@@ -300,7 +309,6 @@ def main():
                 total_critic_steps += 1
 
             total_c_bce += c_bce.item()
-
             total_critic_batches += 1
 
             if train_upscaler:
@@ -361,8 +369,8 @@ def main():
         logger.add_scalar("Degradation L2", average_degradation_loss, epoch)
         logger.add_scalar("Upscaler BCE", average_u_bce, epoch)
         logger.add_scalar("Upscaler Norm", average_u_gradient_norm, epoch)
-        logger.add_scalar("Critic BCE", average_c_bce, epoch)
-        logger.add_scalar("Critic Norm", average_c_gradient_norm, epoch)
+        logger.add_scalar("Bouncer BCE", average_c_bce, epoch)
+        logger.add_scalar("Bouncer Norm", average_c_gradient_norm, epoch)
 
         print(
             f"Epoch {epoch}:",
@@ -370,8 +378,8 @@ def main():
             f"Degradation L2: {average_degradation_loss:.5},",
             f"Upscaler BCE: {average_u_bce:.5},",
             f"Upscaler Norm: {average_u_gradient_norm:.4},",
-            f"Critic BCE: {average_c_bce:.5},",
-            f"Critic Norm: {average_c_gradient_norm:.4}",
+            f"Bouncer BCE: {average_c_bce:.5},",
+            f"Bouncer Norm: {average_c_gradient_norm:.4}",
         )
 
         if epoch % args.eval_interval == 0:
@@ -402,7 +410,7 @@ def main():
             logger.add_scalar("PSNR", psnr, epoch)
             logger.add_scalar("SSIM", ssim, epoch)
             logger.add_scalar("VIF", vif, epoch)
-            logger.add_scalar("F1 Score", f1_score, epoch)
+            logger.add_scalar("F1", f1_score, epoch)
             logger.add_scalar("Precision", precision, epoch)
             logger.add_scalar("Recall", recall, epoch)
 
@@ -410,7 +418,7 @@ def main():
                 f"PSNR: {psnr:.5},",
                 f"SSIM: {ssim:.5},",
                 f"VIF: {vif:.5},",
-                f"F1 Score: {f1_score:.5},",
+                f"F1: {f1_score:.5},",
                 f"Precision: {precision:.5},",
                 f"Recall: {recall:.5}",
             )

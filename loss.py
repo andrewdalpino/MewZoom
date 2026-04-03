@@ -56,19 +56,13 @@ class VGGLoss(Module):
 
 class RelativisticBCELoss(Module):
     """
-    Relativistic average BCE with logits loss on patches for generative adversarial network training.
+    Relativistic average BCE with logits loss for generative adversarial network training.
     """
 
-    def __init__(self, real_label_jitter: float, fake_label_jitter: float):
+    def __init__(self):
         super().__init__()
 
-        assert 0.0 <= real_label_jitter < 1.0, "Real label jitter must be in [0, 1)."
-        assert 0.0 <= fake_label_jitter < 1.0, "Fake label jitter must be in [0, 1)."
-
         self.bce = BCEWithLogitsLoss()
-
-        self.real_label_jitter = real_label_jitter
-        self.fake_label_jitter = fake_label_jitter
 
     def forward_critic(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
         """
@@ -79,26 +73,19 @@ class RelativisticBCELoss(Module):
             y_pred_fake: Critic output for fake images (B, C, H, W).
         """
 
-        y_pred_fake = y_pred_fake.squeeze(1)  # (B, H, W)
-        y_pred_real = y_pred_real.squeeze(1)  # (B, H, W)
+        y_pred_fake = y_pred_fake.flatten(1)  # (B, N)
+        y_pred_real = y_pred_real.flatten(1)  # (B, N)
 
-        y_pred_fake_sigma = y_pred_fake.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
-        y_pred_real_sigma = y_pred_real.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
+        y_pred_fake_sigma = y_pred_fake.mean(dim=1, keepdim=True)  # (B, 1)
+        y_pred_real_sigma = y_pred_real.mean(dim=1, keepdim=True)  # (B, 1)
 
         y_pred_fake = y_pred_fake - y_pred_real_sigma
         y_pred_real = y_pred_real - y_pred_fake_sigma
 
         y_pred = torch.cat((y_pred_fake, y_pred_real))
 
-        if self.fake_label_jitter > 0.0:
-            y_fake = torch.rand_like(y_pred_fake) * self.fake_label_jitter
-        else:
-            y_fake = torch.zeros_like(y_pred_fake)
-
-        if self.real_label_jitter > 0.0:
-            y_real = 1.0 - torch.rand_like(y_pred_real) * self.real_label_jitter
-        else:
-            y_real = torch.ones_like(y_pred_real)
+        y_fake = torch.zeros_like(y_pred_fake)
+        y_real = torch.ones_like(y_pred_real)
 
         y = torch.cat((y_fake, y_real))
 
@@ -115,10 +102,10 @@ class RelativisticBCELoss(Module):
             y_pred_real: Critic output for real images (B, C, H, W).
         """
 
-        y_pred_fake = y_pred_fake.squeeze(1)  # (B, H, W)
-        y_pred_real = y_pred_real.squeeze(1)  # (B, H, W)
+        y_pred_fake = y_pred_fake.flatten(1)  # (B, N)
+        y_pred_real = y_pred_real.flatten(1)  # (B, N)
 
-        y_pred_real_sigma = y_pred_real.mean(dim=(1, 2), keepdim=True)  # (B, 1, 1)
+        y_pred_real_sigma = y_pred_real.mean(dim=1, keepdim=True)  # (B, 1)
 
         y_pred = y_pred_fake - y_pred_real_sigma
 
@@ -131,8 +118,7 @@ class RelativisticBCELoss(Module):
 
 class R1GradientPenalty(Module):
     """
-    R1 regularization penalty for generative adversarial network training that penalizes the
-    gradient of the critic's output with respect to real images.
+    Regularization that penalizes the gradient of the critic's output with respect to real images.
     """
 
     def __init__(self, gamma: float):
@@ -140,7 +126,7 @@ class R1GradientPenalty(Module):
 
         assert gamma >= 0.0, "Gamma must be non-negative."
 
-        self.gamma = torch.tensor(gamma)
+        self.half_gamma = torch.tensor(0.5 * gamma)
 
     def forward(self, y_pred_real: Tensor, y_real: Tensor) -> Tensor:
         """
@@ -157,15 +143,14 @@ class R1GradientPenalty(Module):
             outputs=y_pred_real,
             inputs=y_real,
             grad_outputs=grad_outputs,
+            create_graph=True,
         )[0]
 
-        gradients = gradients.view(gradients.size(0), -1)
+        squared_norms = gradients.flatten(1).norm(2, dim=1).square().mean()
 
-        norms = gradients.norm(2, dim=1).square().mean()
+        loss = self.half_gamma * squared_norms
 
-        penalty = 0.5 * self.gamma * norms
-
-        return penalty
+        return loss
 
 
 class AdaptiveMultitaskLoss(Module):

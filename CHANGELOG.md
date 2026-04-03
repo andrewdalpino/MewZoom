@@ -6,7 +6,7 @@
 - Two new architectures, TrunkNet and U-Net.
 - Added QA head.
 - Added patch discriminator.
-- Added channel attention to long skip connections.
+- Added channel attention to skip connections.
 
 ## 0.2.1
 

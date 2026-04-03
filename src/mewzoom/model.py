@@ -1210,7 +1210,14 @@ class SuperResolver(Module):
 
 
 class Bouncer(Critic, Module):
-    """A discriminator network for detecting real and fake images for adversarial training."""
+    """
+    A patch discriminator network for detecting real and fake images for adversarial training.
+
+        Preconfigured model sizes:
+            - Small, 61 x 61 patch size.
+            - Medium, 121 x 121 patch size.
+            - Large, 181 x 181 patch size.
+    """
 
     AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}
 

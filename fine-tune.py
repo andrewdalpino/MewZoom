@@ -66,7 +66,7 @@ def main():
     parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
     parser.add_argument("--critic_momentum_decay", default=0.1, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=1, type=int)
+    parser.add_argument("--critic_step_ratio", default=3, type=int)
     parser.add_argument("--critic_spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--num_epochs", default=50, type=int)
     parser.add_argument("--critic_warmup_epochs", default=1, type=int)

@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--hue_jitter", default=0.03, type=float)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
-    parser.add_argument("--num_epochs", default=100, type=int)
+    parser.add_argument("--num_epochs", default=150, type=int)
     parser.add_argument("--upscaler_learning_rate", default=2e-4, type=float)
     parser.add_argument("--max_gradient_norm", default=2.0, type=float)
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)

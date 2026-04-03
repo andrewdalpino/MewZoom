@@ -31,6 +31,7 @@ from src.mewzoom.model import (
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _rand(batch: int, channels: int, h: int, w: int) -> Tensor:
     return torch.rand(batch, channels, h, w)
 
@@ -64,6 +65,7 @@ UNET_KWARGS = dict(
 # FanOutProjection
 # ---------------------------------------------------------------------------
 
+
 class TestFanOutProjection(unittest.TestCase):
 
     def test_forward_expands_channels(self):
@@ -96,6 +98,7 @@ class TestFanOutProjection(unittest.TestCase):
 # InvertedBottleneck
 # ---------------------------------------------------------------------------
 
+
 class TestInvertedBottleneck(unittest.TestCase):
 
     def test_forward_preserves_shape(self):
@@ -127,6 +130,7 @@ class TestInvertedBottleneck(unittest.TestCase):
 # Exciter
 # ---------------------------------------------------------------------------
 
+
 class TestExciter(unittest.TestCase):
 
     def test_forward_preserves_shape(self):
@@ -154,6 +158,7 @@ class TestExciter(unittest.TestCase):
 # ChannelAttention
 # ---------------------------------------------------------------------------
 
+
 class TestChannelAttention(unittest.TestCase):
 
     def test_forward_preserves_spatial_shape_of_x1(self):
@@ -179,6 +184,7 @@ class TestChannelAttention(unittest.TestCase):
 # GatedSkipConnection
 # ---------------------------------------------------------------------------
 
+
 class TestGatedSkipConnection(unittest.TestCase):
 
     def test_forward_preserves_shape(self):
@@ -203,6 +209,7 @@ class TestGatedSkipConnection(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # PixelCrush
 # ---------------------------------------------------------------------------
+
 
 class TestPixelCrush(unittest.TestCase):
 
@@ -241,6 +248,7 @@ class TestPixelCrush(unittest.TestCase):
 # SubpixelConv2d
 # ---------------------------------------------------------------------------
 
+
 class TestSubpixelConv2d(unittest.TestCase):
 
     def test_forward_doubles_spatial_dims(self):
@@ -274,6 +282,7 @@ class TestSubpixelConv2d(unittest.TestCase):
 # GlobalQualityAssessor
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalQualityAssessor(unittest.TestCase):
 
     def test_forward_output_shape(self):
@@ -300,6 +309,7 @@ class TestGlobalQualityAssessor(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # SuperResolver
 # ---------------------------------------------------------------------------
+
 
 class TestSuperResolver(unittest.TestCase):
 
@@ -328,6 +338,7 @@ class TestSuperResolver(unittest.TestCase):
 # EncoderBlock / DecoderBlock
 # ---------------------------------------------------------------------------
 
+
 class TestEncoderBlock(unittest.TestCase):
 
     def test_forward_preserves_shape(self):
@@ -351,10 +362,13 @@ class TestEncoderBlock(unittest.TestCase):
 # TrunkNet
 # ---------------------------------------------------------------------------
 
+
 class TestTrunkNet(unittest.TestCase):
 
     def _make(self, **overrides):
-        kwargs = dict(num_channels=16, num_layers=4, hidden_ratio=1, exciter_hidden_ratio=2)
+        kwargs = dict(
+            num_channels=16, num_layers=4, hidden_ratio=1, exciter_hidden_ratio=2
+        )
         kwargs.update(overrides)
         return TrunkNet(**kwargs)
 
@@ -408,6 +422,7 @@ class TestTrunkNet(unittest.TestCase):
 # MewZoomTrunkNet
 # ---------------------------------------------------------------------------
 
+
 class TestMewZoomTrunkNet(unittest.TestCase):
 
     def setUp(self):
@@ -438,8 +453,13 @@ class TestMewZoomTrunkNet(unittest.TestCase):
 
     def test_invalid_upscale_ratio_raises(self):
         with self.assertRaises(AssertionError):
-            MewZoomTrunkNet(upscale_ratio=5, num_channels=16, num_layers=4,
-                            hidden_ratio=1, exciter_hidden_ratio=2)
+            MewZoomTrunkNet(
+                upscale_ratio=5,
+                num_channels=16,
+                num_layers=4,
+                hidden_ratio=1,
+                exciter_hidden_ratio=2,
+            )
 
     def test_add_qa_head_and_forward(self):
         self.model.add_qa_head(num_features=3)
@@ -469,8 +489,11 @@ class TestMewZoomTrunkNet(unittest.TestCase):
     def test_all_valid_upscale_ratios(self):
         for ratio in MewZoomTrunkNet.AVAILABLE_UPSCALE_RATIOS:
             model = MewZoomTrunkNet(
-                upscale_ratio=ratio, num_channels=16, num_layers=4,
-                hidden_ratio=1, exciter_hidden_ratio=2
+                upscale_ratio=ratio,
+                num_channels=16,
+                num_layers=4,
+                hidden_ratio=1,
+                exciter_hidden_ratio=2,
             )
             x = _rand(1, 3, 8, 8)
             out, _ = model(x)
@@ -480,6 +503,7 @@ class TestMewZoomTrunkNet(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # MewZoomUNet
 # ---------------------------------------------------------------------------
+
 
 class TestMewZoomUNet(unittest.TestCase):
 
@@ -533,6 +557,7 @@ class TestMewZoomUNet(unittest.TestCase):
 # MewZoom (factory)
 # ---------------------------------------------------------------------------
 
+
 class TestMewZoom(unittest.TestCase):
 
     def test_trunknet_architecture(self):
@@ -577,6 +602,7 @@ class TestMewZoom(unittest.TestCase):
 # ONNXModel
 # ---------------------------------------------------------------------------
 
+
 class TestONNXModel(unittest.TestCase):
 
     def test_forward_delegates_to_upscale(self):
@@ -592,6 +618,7 @@ class TestONNXModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Encoder
 # ---------------------------------------------------------------------------
+
 
 class TestEncoder(unittest.TestCase):
 
@@ -675,6 +702,7 @@ class TestEncoder(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # UNet
 # ---------------------------------------------------------------------------
+
 
 class TestUNet(unittest.TestCase):
 
@@ -770,6 +798,7 @@ class TestUNet(unittest.TestCase):
 # Decoder.crop_feature_maps (static method)
 # ---------------------------------------------------------------------------
 
+
 class TestDecoderCropFeatureMaps(unittest.TestCase):
 
     def test_no_op_when_sizes_match(self):
@@ -808,6 +837,7 @@ class TestDecoderCropFeatureMaps(unittest.TestCase):
 # PatchDiscriminator
 # ---------------------------------------------------------------------------
 
+
 class TestPatchDiscriminator(unittest.TestCase):
 
     def test_forward_output_shape(self):
@@ -828,6 +858,7 @@ class TestPatchDiscriminator(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Bouncer
 # ---------------------------------------------------------------------------
+
 
 class TestBouncer(unittest.TestCase):
 

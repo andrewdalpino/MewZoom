@@ -116,43 +116,6 @@ class RelativisticBCELoss(Module):
         return loss
 
 
-class R1GradientPenalty(Module):
-    """
-    Regularization that penalizes the gradient of the critic's output with respect to real images.
-    """
-
-    def __init__(self, gamma: float):
-        super().__init__()
-
-        assert gamma >= 0.0, "Gamma must be non-negative."
-
-        self.half_gamma = torch.tensor(0.5 * gamma)
-
-    def forward(self, y_pred_real: Tensor, y_real: Tensor) -> Tensor:
-        """
-        Compute R1 regularization penalty.
-
-        Args:
-            y_pred_real: Critic output for real images.
-            y_real: Real images corresponding to y_pred_real.
-        """
-
-        grad_outputs = torch.ones_like(y_pred_real)
-
-        gradients = torch.autograd.grad(
-            outputs=y_pred_real,
-            inputs=y_real,
-            grad_outputs=grad_outputs,
-            create_graph=True,
-        )[0]
-
-        squared_norms = gradients.flatten(1).norm(2, dim=1).square().mean()
-
-        loss = self.half_gamma * squared_norms
-
-        return loss
-
-
 class AdaptiveMultitaskLoss(Module):
     """
     Adaptive loss weighting using homoscedastic i.e. task-dependent uncertainty as a training signal.

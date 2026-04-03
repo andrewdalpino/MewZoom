@@ -590,6 +590,183 @@ class TestONNXModel(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Encoder
+# ---------------------------------------------------------------------------
+
+class TestEncoder(unittest.TestCase):
+
+    def _make(self, **overrides):
+        kwargs = dict(
+            primary_channels=8,
+            primary_layers=1,
+            secondary_channels=16,
+            secondary_layers=1,
+            tertiary_channels=32,
+            tertiary_layers=1,
+            quaternary_channels=64,
+            quaternary_layers=1,
+            hidden_ratio=1,
+            exciter_hidden_ratio=2,
+        )
+        kwargs.update(overrides)
+        return Encoder(**kwargs)
+
+    def test_forward_returns_four_feature_maps(self):
+        enc = self._make()
+        x = _rand(1, 8, 32, 32)
+        z1, z2, z3, z4 = enc(x)
+        self.assertEqual(z1.shape[1], 8)
+        self.assertEqual(z2.shape[1], 16)
+        self.assertEqual(z3.shape[1], 32)
+        self.assertEqual(z4.shape[1], 64)
+
+    def test_spatial_dims_decrease_with_depth(self):
+        enc = self._make()
+        x = _rand(1, 8, 32, 32)
+        z1, z2, z3, z4 = enc(x)
+        self.assertGreater(z1.shape[2], z2.shape[2])
+        self.assertGreater(z2.shape[2], z3.shape[2])
+        self.assertGreater(z3.shape[2], z4.shape[2])
+
+    def test_invalid_primary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(primary_layers=0)
+
+    def test_invalid_secondary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(secondary_layers=0)
+
+    def test_invalid_tertiary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(tertiary_layers=0)
+
+    def test_invalid_quaternary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(quaternary_layers=0)
+
+    def test_initialize_weights(self):
+        enc = self._make()
+        enc.initialize_weights()
+
+    def test_freeze_and_unfreeze_weights(self):
+        enc = self._make()
+        enc.freeze_weights()
+        for param in enc.parameters():
+            self.assertFalse(param.requires_grad)
+        enc.unfreeze_weights()
+        for param in enc.parameters():
+            self.assertTrue(param.requires_grad)
+
+    def test_add_weight_norms(self):
+        enc = self._make()
+        enc.add_weight_norms()
+        x = _rand(1, 8, 32, 32)
+        z1, z2, z3, z4 = enc(x)
+        self.assertEqual(z1.shape[1], 8)
+
+    def test_enable_activation_checkpointing(self):
+        enc = self._make()
+        enc.enable_activation_checkpointing()
+        x = _rand(1, 8, 32, 32)
+        z1, z2, z3, z4 = enc(x)
+        self.assertEqual(z4.shape[1], 64)
+
+
+# ---------------------------------------------------------------------------
+# UNet
+# ---------------------------------------------------------------------------
+
+class TestUNet(unittest.TestCase):
+
+    def _make(self, **overrides):
+        kwargs = dict(
+            primary_channels=8,
+            primary_layers=2,
+            secondary_channels=16,
+            secondary_layers=2,
+            tertiary_channels=32,
+            tertiary_layers=2,
+            quaternary_channels=64,
+            quaternary_layers=2,
+            hidden_ratio=1,
+            exciter_hidden_ratio=2,
+        )
+        kwargs.update(overrides)
+        return UNet(**kwargs)
+
+    def test_forward_returns_tensor_and_none_without_qa_head(self):
+        net = self._make()
+        x = _rand(1, 8, 32, 32)
+        out, qa = net(x)
+        self.assertIsInstance(out, Tensor)
+        self.assertIsNone(qa)
+        self.assertEqual(out.shape[1], 8)
+
+    def test_forward_output_preserves_spatial_dims(self):
+        net = self._make()
+        x = _rand(1, 8, 32, 32)
+        out, _ = net(x)
+        self.assertEqual(out.shape[2], x.shape[2])
+        self.assertEqual(out.shape[3], x.shape[3])
+
+    def test_forward_returns_qa_tensor_with_qa_head(self):
+        net = self._make()
+        net.add_qa_head(num_features=5)
+        x = _rand(1, 8, 32, 32)
+        out, qa = net(x)
+        self.assertIsInstance(qa, Tensor)
+        self.assertEqual(qa.shape, (1, 5))
+
+    def test_add_and_remove_qa_head(self):
+        net = self._make()
+        net.add_qa_head(num_features=3)
+        self.assertIsNotNone(net.qa_head)
+        net.remove_qa_head()
+        self.assertIsNone(net.qa_head)
+
+    def test_invalid_primary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(primary_layers=1)
+
+    def test_invalid_secondary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(secondary_layers=1)
+
+    def test_invalid_tertiary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(tertiary_layers=1)
+
+    def test_invalid_quaternary_layers_raises(self):
+        with self.assertRaises(AssertionError):
+            self._make(quaternary_layers=1)
+
+    def test_initialize_weights(self):
+        net = self._make()
+        net.initialize_weights()
+
+    def test_freeze_and_unfreeze_weights(self):
+        net = self._make()
+        net.freeze_weights()
+        for param in net.encoder.parameters():
+            self.assertFalse(param.requires_grad)
+        net.unfreeze_weights()
+        for param in net.encoder.parameters():
+            self.assertTrue(param.requires_grad)
+
+    def test_add_weight_norms(self):
+        net = self._make()
+        net.add_weight_norms()
+        out, _ = net(_rand(1, 8, 32, 32))
+        self.assertEqual(out.shape[1], 8)
+
+    def test_enable_activation_checkpointing(self):
+        net = self._make()
+        net.enable_activation_checkpointing()
+        out, _ = net(_rand(1, 8, 32, 32))
+        self.assertEqual(out.shape[1], 8)
+
+
+# ---------------------------------------------------------------------------
 # Decoder.crop_feature_maps (static method)
 # ---------------------------------------------------------------------------
 

@@ -33,7 +33,7 @@ This comparison demonstrates the individual enhancements applied in isolation.
 The latest pretrained models are available on HuggingFace Hub.
 
 | Name | Upscale | Channels | Layers | Parameters | Library Version |
-| --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- |
 | [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | 48 | 64 | 5.3M | 1.x |
 
 ### V0 Pretrained Models

@@ -18,7 +18,9 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    parser = ArgumentParser(description="Super-resolution upscaling script")
+    parser = ArgumentParser(
+        description="Test and compare MewZoom upscaling with bicubic interpolation."
+    )
 
     parser.add_argument("--image_path", type=str, required=True)
     parser.add_argument(
@@ -78,13 +80,11 @@ def main():
 
     y_pred = upscaler.upscale(x)
 
-    pair = torch.stack(
-        [
-            y_bicubic.squeeze(0),
-            y_pred.squeeze(0),
-        ],
-        dim=0,
-    )
+    # Remove batch dimension.
+    y_bicubic = y_bicubic.squeeze(0)
+    y_pred = y_pred.squeeze(0)
+
+    pair = torch.stack([y_bicubic, y_pred], dim=0)
 
     grid = make_grid(pair, nrow=2)
 
@@ -93,10 +93,11 @@ def main():
     plt.imshow(grid)
     plt.show()
 
-    if "y" in input("Save image? (yes|no): ").lower():
-        filename = f"out_{time()}.png"
+    if "y" in input("Save images? (yes|no): ").lower():
+        timestamp = time()
 
-        save_image(y_pred.squeeze(0), filename)
+        save_image(y_bicubic, f"bicubic_{timestamp}.png")
+        save_image(y_pred, f"y_pred_{timestamp}.png")
 
 
 if __name__ == "__main__":

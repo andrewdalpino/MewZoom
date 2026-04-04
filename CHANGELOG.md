@@ -4,9 +4,13 @@
 
 - Change name to MewZoom.
 - Two new architectures, TrunkNet and U-Net.
-- Added QA head.
-- Added patch discriminator.
+- Added QA head and degradation prediction training objective.
 - Added channel attention to skip connections.
+- Pretraining objectives now have adaptive weights.
+- Remove adversarial perceptual loss from fine-tuning objective.
+- Added patch discriminator.
+- Changed Pixel loss from L2 to L1.
+- Critic spectral norm iterations now configurable.
 
 ## 0.2.1
 

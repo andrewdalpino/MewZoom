@@ -913,7 +913,6 @@ class EncoderBlock(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         z = self.convnet.forward(x)
-
         z = self.skip.forward(x, z)
 
         return z
@@ -985,8 +984,6 @@ class GatedSkipConnection(Module):
         self.attention.add_spectral_norms(num_iterations)
 
     def forward(self, x: Tensor, z: Tensor) -> Tensor:
-        assert x.shape == z.shape, "Input and residual must have the same shape."
-
         x = self.attention.forward(x, z)
 
         return x + z
@@ -1016,10 +1013,6 @@ class ChannelAttention(Module):
         self.exciter.add_spectral_norms(num_iterations)
 
     def forward(self, x1: Tensor, x2: Tensor) -> Tensor:
-        assert (
-            x1.shape[:2] == x2.shape[:2]
-        ), "X1 and X2 must have the same batch size and number of channels."
-
         z = self.pool.forward(x2)
         z = self.exciter.forward(z)
         z = self.sigmoid.forward(z)

@@ -28,15 +28,15 @@ This comparison demonstrates the individual enhancements applied in isolation.
 
 ![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-individual.png)
 
-## V1 Pretrained Models
+## Pretrained Models
 
 The latest pretrained models are available on HuggingFace Hub.
 
-| Name | Upscale | Channels | Layers | Parameters | Library Version |
+| Name | Upscale | Architecture | Channels | Layers | Parameters | Library Version |
 | --- | --- | --- | --- | --- | --- |
-| [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | 48 | 64 | 5.3M | 1.x |
+| [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
 
-### V0 Pretrained Models
+### Legacy Models
 
 The following legacy pretrained models are also available on HuggingFace Hub.
 

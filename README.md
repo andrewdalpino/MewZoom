@@ -33,7 +33,7 @@ This comparison demonstrates the individual enhancements applied in isolation.
 The latest pretrained models are available on HuggingFace Hub.
 
 | Name | Upscale | Architecture | Channels | Layers | Parameters | Library Version |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- |
 | [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
 
 ### Legacy Models

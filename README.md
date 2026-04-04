@@ -2,7 +2,7 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of image super-resolution models with cat-like vision and clarity. Looking for the *purrfect* pixels? MewZoom pounces on blurry, low-resolution images and transforms them into crystal-clear high-resolution masterpieces using the power of a deep neural network. Trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism, MewZoom brings out every detail in your fuzzy images - simulanteously removing blur, noise, and compression artifacts while upscaling by 2X, 3X, or 4X original size.
+A family of parameter-efficient image super-resolution models with cat-like vision and clarity. Looking for the *purrfect* pixels? MewZoom pounces on blurry, low-resolution images and transforms them into crystal-clear high-resolution masterpieces using the power of a deep neural network. Trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism, MewZoom brings out every detail in your fuzzy images - simultaneously removing blur, noise, and compression artifacts while upscaling by 2X, 3X, or 4X original size.
 
 ## Key Features
 
@@ -28,27 +28,35 @@ This comparison demonstrates the individual enhancements applied in isolation.
 
 ![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-individual.png)
 
-## Pretrained Models
+## V1 Pretrained Models
 
-The following pretrained models are available on HuggingFace Hub.
+The latest pretrained models are available on HuggingFace Hub.
 
-| Name | Upscale | Num Channels | Encoder Layers | Parameters | Control Modules | Library Version |
+| Name | Upscale | Channels | Layers | Parameters | Library Version |
 | --- | --- | --- | --- | --- | --- | --- |
-| [andrewdalpino/MewZoom-2X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-2X-Ctrl) | 2X | 48 | 20 | 1.8M | Yes | 0.2.x |
-| [andrewdalpino/MewZoom-3X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-3X-Ctrl) | 3X | 54 | 30 | 3.5M | Yes | 0.2.x |
-| [andrewdalpino/MewZoom-4X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-4X-Ctrl) | 4X | 96 | 40 | 14M | Yes | 0.2.x |
-| [andrewdalpino/MewZoom-2X](https://huggingface.co/andrewdalpino/MewZoom-2X) | 2X | 48 | 20 | 1.8M | No | 0.1.x |
-| [andrewdalpino/MewZoom-3X](https://huggingface.co/andrewdalpino/MewZoom-3X) | 3X | 54 | 30 | 3.5M | No | 0.1.x |
-| [andrewdalpino/MewZoom-4X](https://huggingface.co/andrewdalpino/MewZoom-4X) | 4X | 96 | 40 | 14M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | 48 | 64 | 5.3M | 1.x |
+
+### V0 Pretrained Models
+
+The following legacy pretrained models are also available on HuggingFace Hub.
+
+| Name | Upscale | Channels | Layers | Parameters | Control Modules | Library Version |
+| --- | --- | --- | --- | --- | --- | --- |
+| [andrewdalpino/MewZoom-V0-2X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-2X-Ctrl) | 2X | 48 | 20 | 1.8M | Yes | 0.2.x |
+| [andrewdalpino/MewZoom-V0-3X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-3X-Ctrl) | 3X | 54 | 30 | 3.5M | Yes | 0.2.x |
+| [andrewdalpino/MewZoom-V0-4X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-4X-Ctrl) | 4X | 96 | 40 | 14M | Yes | 0.2.x |
+| [andrewdalpino/MewZoom-V0-2X](https://huggingface.co/andrewdalpino/MewZoom-V0-2X) | 2X | 48 | 20 | 1.8M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V0-3X](https://huggingface.co/andrewdalpino/MewZoom-V0-3X) | 3X | 54 | 30 | 3.5M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V0-4X](https://huggingface.co/andrewdalpino/MewZoom-V0-4X) | 4X | 96 | 40 | 14M | No | 0.1.x |
 
 ## Example
 
 If you'd just like to load the pretrained weights and do inference, getting started is as simple as in the example below.
 
-First, you'll need the `ultrazoom` package installed into your project. For the non-control version we'll need library version `0.1.x` to load the pretrained weights. We'll also need the `torchvision` library to do some basic image preprocessing. We recommend using a virtual environment to make package management easier.
+First, you'll need the `mewzoom` package installed into your project. We'll also need the `torchvision` library to do some basic image preprocessing. We recommend using a virtual environment to make package management easier.
 
 ```sh
-pip install ultrazoom~=0.1.0 torchvision
+pip install mewzoom~=1.0.0 torchvision
 ```
 
 Then, load the weights from HuggingFace Hub, convert the input image to a tensor, and upscale the image.
@@ -59,13 +67,13 @@ import torch
 from torchvision.io import decode_image, ImageReadMode
 from torchvision.transforms.v2 import ToDtype, ToPILImage
 
-from ultrazoom.model import UltraZoom
+from mewzoom.model import MewZoom
 
 
-model_name = "andrewdalpino/MewZoom-2X"
+model_name = "andrewdalpino/MewZoom-V1-2X"
 image_path = "./dataset/bird.png"
 
-model = UltraZoom.from_pretrained(model_name)
+model = MewZoom.from_pretrained(model_name)
 
 image_to_tensor = ToDtype(torch.float32, scale=True)
 tensor_to_pil = ToPILImage()

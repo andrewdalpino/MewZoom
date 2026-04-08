@@ -30,15 +30,16 @@ This comparison demonstrates the individual enhancements applied in isolation.
 
 ## Pretrained Models
 
-The latest pretrained models are available on HuggingFace Hub.
+The latest pretrained models are available on HuggingFace Hub. They use the newer `mewzoom` library for inference.
 
 | Name | Upscale | Architecture | Channels | Layers | Parameters | Library Version |
 | --- | --- | --- | --- | --- | --- | --- |
 | [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
+| [andrewdalpino/MewZoom-V1-4X](https://huggingface.co/andrewdalpino/MewZoom-V1-4X) | 4X | TrunkNet | 96 | 64 | 21M | 1.x |
 
 ### Legacy Models
 
-The following legacy pretrained models are also available on HuggingFace Hub.
+The following legacy pretrained models are also available on HuggingFace Hub. Note that legacy models use the `ultrazoom` library for inference.
 
 | Name | Upscale | Channels | Layers | Parameters | Control Modules | Library Version |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -71,7 +72,7 @@ from mewzoom.model import MewZoom
 
 
 model_name = "andrewdalpino/MewZoom-V1-2X"
-image_path = "./dataset/bird.png"
+image_path = "./bird.png"
 
 model = MewZoom.from_pretrained(model_name)
 
@@ -103,3 +104,5 @@ pil_image.show()
 >- Z. Huang, et al. ScaleLong: Towards More Stable Training of Diffusion Model via Scaling Network Long Skip Connection, NeurIPS 2023.
 >- H. Wang, et al. Narrowing the semantic gaps in U-Net with learnable skip connections: The case of medical image segmentation, 2023.
 >- Z. Wang, et al. RA‑Net: reverse attention for generalizing residual learning, Nature Scientific Reports, 2024.
+>- X. Jiang, et al. Residual Spatial and Channel Attention Networks for Single Image Dehazing, Sensors, 2024.
+>- A. Gomaa, et al. Residual Channel-attention (RCA) network for remote sensing image scene classification, Multimedia Tools and Applications, 2025.

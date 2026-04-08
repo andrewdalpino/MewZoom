@@ -1215,7 +1215,7 @@ class Bouncer(Critic, Module):
     AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}
 
     @classmethod
-    def from_preconfigured(cls, model_size: str) -> Self:
+    def from_preconfigured(cls, model_size: str, hidden_ratio: int) -> Self:
         """Return a new pre-configured model."""
 
         match model_size:
@@ -1252,7 +1252,6 @@ class Bouncer(Critic, Module):
             case _:
                 raise ValueError("Invalid model size.")
 
-        hidden_ratio = 2
         exciter_hidden_ratio = 8
 
         return cls(

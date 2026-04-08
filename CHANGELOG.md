@@ -8,9 +8,9 @@
 - Added channel attention to skip connections.
 - Pretraining objectives now have adaptive weights.
 - Remove adversarial perceptual loss from fine-tuning objective.
-- Added patch discriminator.
 - Changed Pixel loss from L2 to L1.
 - Critic spectral norm iterations now configurable.
+- New discriminator architecture.
 
 ## 0.2.1
 

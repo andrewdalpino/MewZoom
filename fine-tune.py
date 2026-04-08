@@ -73,6 +73,7 @@ def main():
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
+    parser.add_argument("--critic_hidden_ratio", default=2, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=1, type=int)
     parser.add_argument("--checkpoint_interval", default=2, type=int)
@@ -194,6 +195,7 @@ def main():
 
     critic_args = {
         "model_size": args.critic_model_size,
+        "hidden_ratio": args.critic_hidden_ratio,
     }
 
     critic = Bouncer.from_preconfigured(**critic_args)

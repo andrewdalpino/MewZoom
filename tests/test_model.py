@@ -10,7 +10,7 @@ from src.mewzoom.model import (
     EncoderBlock,
     Exciter,
     FanOutProjection,
-    GatedSkipConnection,
+    ForwardGatedSkipConnection as GatedSkipConnection,
     GlobalQualityAssessor,
     InvertedBottleneck,
     MewZoom,

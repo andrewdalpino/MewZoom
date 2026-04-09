@@ -780,6 +780,7 @@ class Decoder(Module):
         new_decoder_block = partial(
             DecoderBlock,
             hidden_ratio=hidden_ratio,
+            skip_type=skip_type,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -817,9 +818,9 @@ class Decoder(Module):
             skip_class, exciter_hidden_ratio=exciter_hidden_ratio
         )
 
-        self.skip1 = new_skip_connection(num_channels=primary_channels)
-        self.skip2 = new_skip_connection(num_channels=secondary_channels)
-        self.skip3 = new_skip_connection(num_channels=tertiary_channels)
+        self.skip1 = new_skip_connection(num_channels=secondary_channels)
+        self.skip2 = new_skip_connection(num_channels=tertiary_channels)
+        self.skip3 = new_skip_connection(num_channels=quaternary_channels)
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 

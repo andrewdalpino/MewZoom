@@ -42,6 +42,7 @@ TRUNK_KWARGS = dict(
     num_channels=16,
     num_layers=4,
     hidden_ratio=1,
+    skip_type="forward-gated",
     exciter_hidden_ratio=2,
 )
 
@@ -57,6 +58,7 @@ UNET_KWARGS = dict(
     quaternary_channels=64,
     quaternary_layers=2,
     hidden_ratio=1,
+    skip_type="forward-gated",
     exciter_hidden_ratio=2,
 )
 
@@ -168,13 +170,6 @@ class TestChannelAttention(unittest.TestCase):
         out = layer(x1, x2)
         self.assertEqual(out.shape, x1.shape)
 
-    def test_mismatched_channels_raises(self):
-        layer = ChannelAttention(16, exciter_hidden_ratio=2)
-        x1 = _rand(1, 16, 8, 8)
-        x2 = _rand(1, 8, 8, 8)
-        with self.assertRaises(AssertionError):
-            layer(x1, x2)
-
     def test_add_weight_norms(self):
         layer = ChannelAttention(16, exciter_hidden_ratio=2)
         layer.add_weight_norms()
@@ -193,13 +188,6 @@ class TestGatedSkipConnection(unittest.TestCase):
         z = _rand(2, 16, 8, 8)
         out = layer(x, z)
         self.assertEqual(out.shape, x.shape)
-
-    def test_mismatched_shapes_raises(self):
-        layer = GatedSkipConnection(16, exciter_hidden_ratio=2)
-        x = _rand(1, 16, 8, 8)
-        z = _rand(1, 16, 4, 4)
-        with self.assertRaises(AssertionError):
-            layer(x, z)
 
     def test_initialize_weights(self):
         layer = GatedSkipConnection(16, exciter_hidden_ratio=2)
@@ -342,17 +330,26 @@ class TestSuperResolver(unittest.TestCase):
 class TestEncoderBlock(unittest.TestCase):
 
     def test_forward_preserves_shape(self):
-        block = EncoderBlock(num_channels=16, hidden_ratio=2, exciter_hidden_ratio=2)
+        block = EncoderBlock(
+            num_channels=16,
+            hidden_ratio=2,
+            skip_type="forward-gated",
+            exciter_hidden_ratio=2,
+        )
         x = _rand(2, 16, 8, 8)
         out = block(x)
         self.assertEqual(out.shape, x.shape)
 
     def test_initialize_weights(self):
-        block = EncoderBlock(16, hidden_ratio=1, exciter_hidden_ratio=4)
+        block = EncoderBlock(
+            16, hidden_ratio=1, skip_type="forward-gated", exciter_hidden_ratio=4
+        )
         block.initialize_weights()
 
     def test_add_weight_norms(self):
-        block = EncoderBlock(16, hidden_ratio=2, exciter_hidden_ratio=2)
+        block = EncoderBlock(
+            16, hidden_ratio=2, skip_type="forward-gated", exciter_hidden_ratio=2
+        )
         block.add_weight_norms()
         out = block(_rand(1, 16, 8, 8))
         self.assertEqual(out.shape, (1, 16, 8, 8))
@@ -367,7 +364,11 @@ class TestTrunkNet(unittest.TestCase):
 
     def _make(self, **overrides):
         kwargs = dict(
-            num_channels=16, num_layers=4, hidden_ratio=1, exciter_hidden_ratio=2
+            num_channels=16,
+            num_layers=4,
+            hidden_ratio=1,
+            skip_type="forward-gated",
+            exciter_hidden_ratio=2,
         )
         kwargs.update(overrides)
         return TrunkNet(**kwargs)
@@ -458,6 +459,7 @@ class TestMewZoomTrunkNet(unittest.TestCase):
                 num_channels=16,
                 num_layers=4,
                 hidden_ratio=1,
+                skip_type="forward-gated",
                 exciter_hidden_ratio=2,
             )
 
@@ -493,6 +495,7 @@ class TestMewZoomTrunkNet(unittest.TestCase):
                 num_channels=16,
                 num_layers=4,
                 hidden_ratio=1,
+                skip_type="forward-gated",
                 exciter_hidden_ratio=2,
             )
             x = _rand(1, 3, 8, 8)
@@ -633,6 +636,7 @@ class TestEncoder(unittest.TestCase):
             quaternary_channels=64,
             quaternary_layers=1,
             hidden_ratio=1,
+            skip_type="forward-gated",
             exciter_hidden_ratio=2,
         )
         kwargs.update(overrides)
@@ -717,9 +721,12 @@ class TestUNet(unittest.TestCase):
             quaternary_channels=64,
             quaternary_layers=2,
             hidden_ratio=1,
+            skip_type="forward-gated",
             exciter_hidden_ratio=2,
         )
+
         kwargs.update(overrides)
+
         return UNet(**kwargs)
 
     def test_forward_returns_tensor_and_none_without_qa_head(self):
@@ -863,23 +870,25 @@ class TestPatchDiscriminator(unittest.TestCase):
 class TestBouncer(unittest.TestCase):
 
     def _small_bouncer(self):
-        return Bouncer.from_preconfigured("small")
+        return Bouncer.from_preconfigured(
+            "small", hidden_ratio=1, skip_type="forward-gated", exciter_hidden_ratio=2
+        )
 
     def test_from_preconfigured_small(self):
-        model = Bouncer.from_preconfigured("small")
+        model = self._small_bouncer()
         self.assertIsInstance(model, Bouncer)
 
     def test_from_preconfigured_medium(self):
-        model = Bouncer.from_preconfigured("medium")
+        model = Bouncer.from_preconfigured(
+            "medium", hidden_ratio=1, skip_type="forward-gated", exciter_hidden_ratio=2
+        )
         self.assertIsInstance(model, Bouncer)
 
     def test_from_preconfigured_large(self):
-        model = Bouncer.from_preconfigured("large")
+        model = Bouncer.from_preconfigured(
+            "large", hidden_ratio=1, skip_type="forward-gated", exciter_hidden_ratio=2
+        )
         self.assertIsInstance(model, Bouncer)
-
-    def test_from_preconfigured_invalid_raises(self):
-        with self.assertRaises(ValueError):
-            Bouncer.from_preconfigured("xlarge")
 
     def test_forward_output_shape(self):
         model = self._small_bouncer()

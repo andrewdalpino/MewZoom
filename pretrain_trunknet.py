@@ -36,7 +36,9 @@ from tqdm import tqdm
 
 
 def main():
-    parser = ArgumentParser(description="Training script")
+    parser = ArgumentParser(
+        description="Training script or TrunkNet-based architectures."
+    )
 
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
@@ -63,6 +65,7 @@ def main():
     parser.add_argument("--num_channels", default=48, type=int)
     parser.add_argument("--num_layers", default=64, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
+    parser.add_argument("--skip_type", default="forward-gated", type=str)
     parser.add_argument("--exciter_hidden_ratio", default=8, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
@@ -164,6 +167,7 @@ def main():
         "num_channels": args.num_channels,
         "num_layers": args.num_layers,
         "hidden_ratio": args.hidden_ratio,
+        "skip_type": args.skip_type,
         "exciter_hidden_ratio": args.exciter_hidden_ratio,
     }
 

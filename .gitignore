@@ -13,3 +13,5 @@ wheels/
 .venv
 venv/
 ENV/
+bird.png
+model.onnx

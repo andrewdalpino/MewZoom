@@ -63,6 +63,7 @@ class MewZoomTrunkNet(Upscaler, Module):
         num_channels: int,
         num_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -74,7 +75,7 @@ class MewZoomTrunkNet(Upscaler, Module):
         self.stem = FanOutProjection(3, num_channels)
 
         self.body = TrunkNet(
-            num_channels, num_layers, hidden_ratio, exciter_hidden_ratio
+            num_channels, num_layers, hidden_ratio, skip_type, exciter_hidden_ratio
         )
 
         self.head = SuperResolver(num_channels, upscale_ratio)
@@ -170,6 +171,7 @@ class MewZoomUNet(Upscaler, Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -190,6 +192,7 @@ class MewZoomUNet(Upscaler, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            skip_type,
             exciter_hidden_ratio,
         )
 
@@ -280,6 +283,7 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
             num_channels=64,
             num_layers=8,
             hidden_ratio=2,
+            skip_type="self-gated",
             exciter_hidden_ratio=4,
         )
 
@@ -295,6 +299,7 @@ class MewZoom(Upscaler, Module, PyTorchModelHubMixin):
             quaternary_channels=512,
             quaternary_layers=2,
             hidden_ratio=2,
+            skip_type="self-gated",
             exciter_hidden_ratio=4,
         )
     """
@@ -401,6 +406,7 @@ class TrunkNet(Module):
         num_channels: int,
         num_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -410,6 +416,7 @@ class TrunkNet(Module):
         new_encoder_block = partial(
             EncoderBlock,
             hidden_ratio=hidden_ratio,
+            skip_type=skip_type,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -429,10 +436,26 @@ class TrunkNet(Module):
             *[new_encoder_block(num_channels) for _ in range(floor(num_layers / 4))]
         )
 
-        self.skip1 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip2 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip3 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
-        self.skip4 = GatedSkipConnection(num_channels, exciter_hidden_ratio)
+        match skip_type.lower():
+            case "self-gated":
+                skip_class = SelfGatedSkipConnection
+
+            case "forward-gated":
+                skip_class = ForwardGatedSkipConnection
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
+        new_skip_connection = partial(
+            skip_class,
+            num_channels=num_channels,
+            exciter_hidden_ratio=exciter_hidden_ratio,
+        )
+
+        self.skip1 = new_skip_connection()
+        self.skip2 = new_skip_connection()
+        self.skip3 = new_skip_connection()
+        self.skip4 = new_skip_connection()
 
         self.qa_head = None
 
@@ -513,6 +536,7 @@ class UNet(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -539,6 +563,7 @@ class UNet(Module):
             quaternary_channels,
             ceil(quaternary_layers / 2),
             hidden_ratio,
+            skip_type,
             exciter_hidden_ratio,
         )
 
@@ -552,6 +577,7 @@ class UNet(Module):
             primary_channels,
             floor(primary_layers / 2),
             hidden_ratio,
+            skip_type,
             exciter_hidden_ratio,
         )
 
@@ -618,6 +644,7 @@ class Encoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -637,6 +664,7 @@ class Encoder(Module):
         new_encoder_block = partial(
             EncoderBlock,
             hidden_ratio=hidden_ratio,
+            skip_type=skip_type,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -732,6 +760,7 @@ class Decoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -774,9 +803,23 @@ class Decoder(Module):
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
 
-        self.skip1 = GatedSkipConnection(secondary_channels, exciter_hidden_ratio)
-        self.skip2 = GatedSkipConnection(tertiary_channels, exciter_hidden_ratio)
-        self.skip3 = GatedSkipConnection(quaternary_channels, exciter_hidden_ratio)
+        match skip_type.lower():
+            case "self-gated":
+                skip_class = SelfGatedSkipConnection
+
+            case "forward-gated":
+                skip_class = ForwardGatedSkipConnection
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
+        new_skip_connection = partial(
+            skip_class, exciter_hidden_ratio=exciter_hidden_ratio
+        )
+
+        self.skip1 = new_skip_connection(num_channels=primary_channels)
+        self.skip2 = new_skip_connection(num_channels=secondary_channels)
+        self.skip3 = new_skip_connection(num_channels=tertiary_channels)
 
         self.checkpoint = lambda layer, x: layer.forward(x)
 
@@ -892,12 +935,28 @@ class Decoder(Module):
 class EncoderBlock(Module):
     """A single encoder block consisting of a small convolutional network and a residual connection."""
 
-    def __init__(self, num_channels: int, hidden_ratio: int, exciter_hidden_ratio: int):
+    def __init__(
+        self,
+        num_channels: int,
+        hidden_ratio: int,
+        skip_type: str,
+        exciter_hidden_ratio: int,
+    ):
         super().__init__()
 
         self.convnet = InvertedBottleneck(num_channels, hidden_ratio)
 
-        self.skip = GatedSkipConnection(num_channels, exciter_hidden_ratio)
+        match skip_type.lower():
+            case "self-gated":
+                skip = SelfGatedSkipConnection(num_channels, exciter_hidden_ratio)
+
+            case "forward-gated":
+                skip = ForwardGatedSkipConnection(num_channels, exciter_hidden_ratio)
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
+        self.skip = skip
 
     def initialize_weights(self) -> None:
         self.convnet.initialize_weights()
@@ -963,7 +1022,7 @@ class InvertedBottleneck(Module):
         return z
 
 
-class GatedSkipConnection(Module):
+class SelfGatedSkipConnection(Module):
     """
     A residual connection that selectively brings forward feature maps from the input based on
     the output of the current layer.
@@ -982,6 +1041,18 @@ class GatedSkipConnection(Module):
 
     def add_spectral_norms(self, num_iterations: int) -> None:
         self.attention.add_spectral_norms(num_iterations)
+
+    def forward(self, x: Tensor, z: Tensor) -> Tensor:
+        x = self.attention.forward(x, x)
+
+        return x + z
+
+
+class ForwardGatedSkipConnection(SelfGatedSkipConnection):
+    """
+    A residual connection that selectively brings forward feature maps from the input based on
+    the output of a higher-order layer.
+    """
 
     def forward(self, x: Tensor, z: Tensor) -> Tensor:
         x = self.attention.forward(x, z)
@@ -1215,7 +1286,13 @@ class Bouncer(Critic, Module):
     AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}
 
     @classmethod
-    def from_preconfigured(cls, model_size: str, hidden_ratio: int) -> Self:
+    def from_preconfigured(
+        cls,
+        model_size: str,
+        hidden_ratio: int,
+        skip_type: str,
+        exciter_hidden_ratio: int,
+    ) -> Self:
         """Return a new pre-configured model."""
 
         match model_size:
@@ -1252,8 +1329,6 @@ class Bouncer(Critic, Module):
             case _:
                 raise ValueError("Invalid model size.")
 
-        exciter_hidden_ratio = 8
-
         return cls(
             primary_channels,
             primary_layers,
@@ -1264,6 +1339,7 @@ class Bouncer(Critic, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            skip_type,
             exciter_hidden_ratio,
         )
 
@@ -1278,6 +1354,7 @@ class Bouncer(Critic, Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
+        skip_type: str,
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -1294,6 +1371,7 @@ class Bouncer(Critic, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
+            skip_type,
             exciter_hidden_ratio,
         )
 

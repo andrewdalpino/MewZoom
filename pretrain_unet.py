@@ -36,7 +36,7 @@ from tqdm import tqdm
 
 
 def main():
-    parser = ArgumentParser(description="Training script")
+    parser = ArgumentParser(description="Training script for UNet-based architectures.")
 
     parser.add_argument("--train_images_path", default="./dataset/train", type=str)
     parser.add_argument("--test_images_path", default="./dataset/test", type=str)
@@ -61,14 +61,15 @@ def main():
     parser.add_argument("--combined_loss_learning_rate", default=1e-3, type=float)
     parser.add_argument("--min_loss_weight", default=1e-2, type=float)
     parser.add_argument("--primary_channels", default=48, type=int)
-    parser.add_argument("--primary_layers", default=8, type=int)
+    parser.add_argument("--primary_layers", default=4, type=int)
     parser.add_argument("--secondary_channels", default=96, type=int)
-    parser.add_argument("--secondary_layers", default=8, type=int)
+    parser.add_argument("--secondary_layers", default=4, type=int)
     parser.add_argument("--tertiary_channels", default=192, type=int)
-    parser.add_argument("--tertiary_layers", default=8, type=int)
+    parser.add_argument("--tertiary_layers", default=4, type=int)
     parser.add_argument("--quaternary_channels", default=384, type=int)
-    parser.add_argument("--quaternary_layers", default=8, type=int)
+    parser.add_argument("--quaternary_layers", default=4, type=int)
     parser.add_argument("--hidden_ratio", default=2, type=int)
+    parser.add_argument("--skip_type", default="forward-gated", type=str)
     parser.add_argument("--exciter_hidden_ratio", default=8, type=int)
     parser.add_argument("--activation_checkpointing", action="store_true")
     parser.add_argument("--eval_interval", default=2, type=int)
@@ -176,6 +177,7 @@ def main():
         "quaternary_channels": args.quaternary_channels,
         "quaternary_layers": args.quaternary_layers,
         "hidden_ratio": args.hidden_ratio,
+        "skip_type": args.skip_type,
         "exciter_hidden_ratio": args.exciter_hidden_ratio,
     }
 
@@ -193,7 +195,7 @@ def main():
     vgg_loss = VGGLoss().to(args.device)
     combined_loss = AdaptiveMultitaskLoss(4, args.min_loss_weight).to(args.device)
 
-    print(f"Upscaler has {upscaler.num_trainable_params:,} trainable parameters")
+    print(f"Upscaler has {upscaler.model.num_trainable_params:,} trainable parameters")
     print(f"Perceptual model has {vgg_loss.num_params:,} parameters")
 
     upscaler_optimizer = AdamW(upscaler.parameters(), lr=args.upscaler_learning_rate)

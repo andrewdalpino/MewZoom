@@ -2,7 +2,7 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of super-resolution models with cat-like vision. Pre-trained on a diverse set of high-quality images and fine-tuned with an adversarial network, MewZoom transforms your fuzzy images into crystal-clear high-resolution masterpieces with exceptional realism. In addition to upscaling images by 2X, 3X, 4X, or 8X the original size, MewZoom's degradation-aware training enables it to surgically identify and remove blur, noise, and compression artifacts without removing details.
+A family of open-source super-resolution models with cat-like vision. Pre-trained on a diverse set of high-quality images and fine-tuned with an adversarial network, MewZoom transforms your fuzzy images into crystal-clear high-resolution masterpieces with exceptional realism. In addition to upscaling images by 2X, 3X, 4X, or 8X the original size, MewZoom's degradation-aware training enables it to surgically identify and remove blur, noise, and compression artifacts without removing details.
 
 ## Key Features
 
@@ -11,6 +11,10 @@ A family of super-resolution models with cat-like vision. Pre-trained on a diver
 - **Ultra clarity**: MewZoom is trained to predict and remove blur, noise, and compression artifacts in addition to upscaling.
 
 - **Full RGB**: MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
+
+## Code Repository
+
+The training and inference code is available at [https://github.com/andrewdalpino/MewZoom](https://github.com/andrewdalpino/MewZoom).
 
 ## Demos
 

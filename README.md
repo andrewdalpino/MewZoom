@@ -37,6 +37,7 @@ The latest pretrained models are available on HuggingFace Hub. They use the newe
 | [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
 | [andrewdalpino/MewZoom-V1-2X-Unet](https://huggingface.co/andrewdalpino/MewZoom-V1-2X-Unet) | 2X | UNet | 48/96/192/384 | 4/4/4/4 | 32M | 1.x |
 | [andrewdalpino/MewZoom-V1-4X](https://huggingface.co/andrewdalpino/MewZoom-V1-4X) | 4X | TrunkNet | 96 | 64 | 21M | 1.x |
+| [andrewdalpino/MewZoom-V1-4X-Unet](https://huggingface.co/andrewdalpino/MewZoom-V1-4X-Unet) | 4X | UNet | 96/192/384/768 | 4/4/4/4 | 128M | 1.x |
 
 ### Legacy Models
 

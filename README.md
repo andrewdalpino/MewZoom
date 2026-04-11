@@ -2,15 +2,15 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of parameter-efficient super-resolution models with cat-like vision and clarity. Pre-trained on a diverse set of high-quality images and fine-tuned with an adversarial network, MewZoom transforms your fuzzy images into crystal-clear high-resolution masterpieces with exceptional realism. In addition to upscaling images by 2X, 3X, 4X, or 8X the original size, MewZoom's degradation-aware training enables it to surgically identify and remove blur, noise, and artifacts without removing details.
+A family of super-resolution models with cat-like vision. Pre-trained on a diverse set of high-quality images and fine-tuned with an adversarial network, MewZoom transforms your fuzzy images into crystal-clear high-resolution masterpieces with exceptional realism. In addition to upscaling images by 2X, 3X, 4X, or 8X the original size, MewZoom's degradation-aware training enables it to surgically identify and remove blur, noise, and compression artifacts without removing details.
 
 ## Key Features
 
 - **Fast and scalable**: MewZoom incorporates parameter-efficiency into the architecture requiring less parameters than models with similar performance.
 
-- **Ultra clarity**: In addition to upscaling, MewZoom is trained to predict and remove various forms of degradation including blur, noise, and compression artifacts.
+- **Ultra clarity**: MewZoom is trained to predict and remove blur, noise, and compression artifacts in addition to upscaling.
 
-- **Full RGB**: Unlike many efficient SR models that only operate in the luminance domain, MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
+- **Full RGB**: MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
 
 ## Demos
 
@@ -52,17 +52,19 @@ The following legacy pretrained models are also available on HuggingFace Hub. No
 | [andrewdalpino/MewZoom-V0-3X](https://huggingface.co/andrewdalpino/MewZoom-V0-3X) | 3X | 54 | 30 | 3.5M | No | 0.1.x |
 | [andrewdalpino/MewZoom-V0-4X](https://huggingface.co/andrewdalpino/MewZoom-V0-4X) | 4X | 96 | 40 | 14M | No | 0.1.x |
 
-## Example
+## Examples
 
-If you'd just like to load the pretrained weights and do inference, getting started is as simple as in the example below.
+To load pretrained weights and start upscaling your images, getting started is as simple as in the examples below.
 
-First, you'll need the `mewzoom` package installed into your project. We'll also need the `torchvision` library to do some basic image preprocessing. We recommend using a virtual environment to make package management easier.
+### PyTorch
+
+In this example we'll use HuggingFace Hub to download the pretrained model weights and then run inference using the Python `mewzoom` library which utilizes PyTorch under the hood. First, you'll need the `mewzoom` package installed into your project. We'll also need the `torchvision` library to do some basic image preprocessing. We recommend using a virtual environment to make package management easier.
 
 ```sh
 pip install mewzoom~=1.0.0 torchvision
 ```
 
-Then, load the weights from HuggingFace Hub, convert the input image to a tensor, and upscale the image.
+Then, load the weights from HuggingFace Hub using the `from_pretrained()` method, load and convert the input image to a tensor using Torch Vision, upscale the image using the model, and then display the upscaled image.
 
 ```python
 import torch
@@ -90,6 +92,49 @@ y_pred = model.upscale(x)
 pil_image = tensor_to_pil(y_pred.squeeze(0))
 
 pil_image.show()
+```
+
+### ONNX Runtime
+
+If you prefer to run the models via an ONNX runtime then you can manually download the ONNX model from the model's repository on HuggingFace Hub and then load the graph into your preferred ONNX-compatible inference engine. In Python, you'll first need to install the `onnxruntime`, `numpy`, and  `pillow` dependencies into your project using your favorite package manager.
+
+```sh
+pip install onnxruntime numpy pillow
+```
+
+Then, load the weights, process the input image so that it's compatible with the ONNX graph, upscale the image, and then display it.
+
+```python
+import numpy as np
+import onnxruntime as ort
+
+from PIL import Image
+
+model_path = "./model.onnx"
+image_path = "./bird.png"
+
+session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+
+image = Image.open(image_path).convert("RGB")
+
+image_array = np.array(image, dtype=np.float32) / 255.0  # Normalize to [0, 1]
+
+# Convert from (H, W, C) to (1, C, H, W)
+input_tensor = np.transpose(image_array, (2, 0, 1))
+input_tensor = np.expand_dims(input_tensor, axis=0)
+
+outputs = session.run(None, {"x": input_tensor})
+
+output_tensor = outputs[0][0]  # Remove batch dimension
+
+output_array = np.transpose(output_tensor, (1, 2, 0))  # (C, H, W) -> (H, W, C)
+output_array = np.clip(output_array, 0.0, 1.0)
+
+output_image = (output_array * 255).astype(np.uint8)
+
+result = Image.fromarray(output_image, "RGB")
+
+result.show()
 ```
 
 ## References

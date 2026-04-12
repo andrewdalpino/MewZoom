@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ONNX Tensor Debug</title>
+</head>
+<body>
+  <h1>Tensor Data Debug</h1>
+  <pre id="output"></pre>
+  <script type="module">
+    import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/esm/ort.min.js";
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+
+    const output = document.getElementById('output');
+
+    function log(msg) {
+      console.log(msg);
+      output.textContent += msg + '\n';
+    }
+
+    async function test() {
+      try {
+        // Load a simple test model - create a model that just outputs a known pattern
+        // For now, let's test with the actual MewZoom model
+        
+        log('Loading model...');
+        const modelUrl = 'https://huggingface.co/andrewdalpino/MewZoom-V1-2X/resolve/main/model.onnx';
+        
+        const session = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all'
+        });
+        
+        log('Model loaded');
+
+        // Create a test input with distinct patterns
+        // Red top-left, Green top-right, Blue bottom-left, White bottom-right
+        const size = 32;
+        const inputData = new Float32Array(3 * size * size);
+        
+        // Fill with pattern: each channel gets a different constant
+        for (let c = 0; c < 3; c++) {
+          for (let h = 0; h < size; h++) {
+            for (let w = 0; w < size; w++) {
+              const idx = c * size * size + h * size + w;
+              // Top-left quadrant: channel 0 = 1.0
+              // Top-right quadrant: channel 1 = 1.0
+              // Bottom-left quadrant: channel 2 = 1.0
+              // Bottom-right quadrant: all channels = 0.5
+              if (h < size/2 && w < size/2) {
+                inputData[idx] = (c === 0) ? 1.0 : 0.0;
+              } else if (h < size/2 && w >= size/2) {
+                inputData[idx] = (c === 1) ? 1.0 : 0.0;
+              } else if (h >= size/2 && w < size/2) {
+                inputData[idx] = (c === 2) ? 1.0 : 0.0;
+              } else {
+                inputData[idx] = 0.5;
+              }
+            }
+          }
+        }
+
+        log(`Input data length: ${inputData.length}`);
+        log(`Input first 12 values: ${Array.from(inputData.slice(0, 12)).join(', ')}`);
+
+        // Create tensor
+        const inputTensor = new ort.Tensor('float32', inputData, [1, 3, size, size]);
+        log(`Input tensor dims: ${inputTensor.dims}`);
+        log(`Input tensor size: ${inputTensor.size}`);
+
+        // Run inference
+        const feeds = { 'x': inputTensor };
+        const results = await session.run(feeds);
+        
+        const outputTensor = results.output;
+        log(`Output tensor dims: ${outputTensor.dims}`);
+        log(`Output tensor size: ${outputTensor.size}`);
+        log(`Output data length: ${outputTensor.data.length}`);
+        log(`Output data type: ${typeof outputTensor.data}`);
+
+        // Check if data is a TypedArray
+        if (outputTensor.data.buffer) {
+          log(`Output data is TypedArray with byteLength: ${outputTensor.data.byteLength}`);
+        }
+
+        // Get actual data
+        let data;
+        if (outputTensor.data.getData) {
+          data = await outputTensor.data.getData();
+        } else {
+          data = outputTensor.data;
+        }
+
+        // Analyze first few values
+        const first12 = [];
+        for (let i = 0; i < 12; i++) {
+          first12.push(data[i]);
+        }
+        log(`Output first 12 values: ${first12.map(v => v.toFixed(4)).join(', ')}`);
+
+        // Check if data might be in HWC format
+        log(`\n--- Testing different layouts ---`);
+        
+        // If data is CHW: [C0H0W0, C0H0W1, ..., C0H1W0, ..., C1H0W0, ...]
+        // If data is HWC: [H0W0C0, H0W0C1, H0W0C2, H0W1C0, ...]
+        
+        const [b, c, h, w] = outputTensor.dims;
+        log(`Assuming CHW: [B=${b}, C=${c}, H=${h}, W=${w}]`);
+        
+        // Test: what if it's actually HWC flattened?
+        // HWC flattened would be H*W*C = 64*64*3 = 12288 for 2X upscale of 32x32
+        log(`If HWC (H=${h}, W=${w}, C=3): expected ${h * w * 3} elements`);
+        log(`Actual data length: ${data.length}`);
+
+        // Try both interpretations
+        log(`\nInterpretation 1 - CHW:`);
+        for (let ch = 0; ch < 3; ch++) {
+          log(`  Channel ${ch}, pixel [0,0]: ${data[ch * h * w].toFixed(4)}`);
+        }
+
+        log(`\nInterpretation 2 - HWC:`);
+        for (let ch = 0; ch < 3; ch++) {
+          log(`  Pixel [0,0], channel ${ch}: ${data[ch].toFixed(4)}`);
+        }
+
+        // Test middle of image
+        const midH = Math.floor(h / 2);
+        const midW = Math.floor(w / 2);
+        log(`\nMiddle pixel [${midH}, ${midW}]:`);
+        log(`  CHW index: channel 0 = ${midH * w + midW}, channel 1 = ${h * w + midH * w + midW}, channel 2 = ${2 * h * w + midH * w + midW}`);
+        log(`  CHW values: ${data[midH * w + midW].toFixed(4)}, ${data[h * w + midH * w + midW].toFixed(4)}, ${data[2 * h * w + midH * w + midW].toFixed(4)}`);
+        
+        log(`  HWC index: ${midH * w * 3 + midW * 3}, ${midH * w * 3 + midW * 3 + 1}, ${midH * w * 3 + midW * 3 + 2}`);
+        log(`  HWC values: ${data[midH * w * 3 + midW * 3].toFixed(4)}, ${data[midH * w * 3 + midW * 3 + 1].toFixed(4)}, ${data[midH * w * 3 + midW * 3 + 2].toFixed(4)}`);
+
+      } catch (err) {
+        log(`Error: ${err.message}`);
+        console.error(err);
+      }
+    }
+
+    test();
+  </script>
+</body>
+</html>

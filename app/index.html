@@ -363,9 +363,48 @@
             margin-top: 0.5rem;
             text-align: center;
         }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 15, 15, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            pointer-events: auto;
+        }
+
+        .loading-overlay.visible {
+            display: flex;
+        }
+
+        .loading-overlay .spinner {
+            width: 64px;
+            height: 64px;
+            border: 4px solid var(--bg-tertiary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1.5rem;
+        }
+
+        .loading-overlay-text {
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p class="loading-overlay-text" id="loadingOverlayText">Processing image...</p>
+    </div>
     <div class="container">
         <header>
             <h1>MewZoom</h1>
@@ -500,11 +539,14 @@
         const progressContainer = document.getElementById('progressContainer');
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingOverlayText = document.getElementById('loadingOverlayText');
 
         uploadSection.addEventListener('click', () => fileInput.click());
 
         uploadSection.addEventListener('dragover', (e) => {
             e.preventDefault();
+
             uploadSection.classList.add('dragover');
         });
 
@@ -514,8 +556,11 @@
 
         uploadSection.addEventListener('drop', (e) => {
             e.preventDefault();
+
             uploadSection.classList.remove('dragover');
+
             const file = e.dataTransfer.files[0];
+
             if (file && file.type.startsWith('image/')) {
                 loadImageFile(file);
             }
@@ -523,6 +568,7 @@
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
+
             if (file) {
                 loadImageFile(file);
             }
@@ -530,6 +576,7 @@
 
         modelSelect.addEventListener('change', async () => {
             const modelId = modelSelect.value;
+
             if (modelId !== currentModelId) {
                 await loadModel(modelId);
             }
@@ -544,13 +591,16 @@
             }
 
             showProgress(true);
+
             updateProgress(0, 'Connecting to HuggingFace Hub...');
 
             try {
                 session = null;
+
                 updateProgress(10, 'Loading ONNX Runtime...');
 
                 const modelUrl = `https://huggingface.co/${modelId}/resolve/main/model.onnx`;
+
                 updateProgress(20, `Downloading model: ${MODEL_CONFIG[modelId].name}...`);
 
                 session = await ort.InferenceSession.create(modelUrl, {
@@ -562,21 +612,27 @@
                 selectedScale = MODEL_CONFIG[modelId].scale;
 
                 updateProgress(100, 'Model loaded successfully!');
+
                 setTimeout(() => showProgress(false), 1000);
 
                 updateModelStatus('ready', `Model: ${MODEL_CONFIG[modelId].name}`);
             } catch (error) {
                 console.error('Failed to load model:', error);
+
                 updateModelStatus('error', 'Failed to load model');
+
                 showProgress(false);
+
                 alert(`Failed to load model: ${error.message}`);
             }
         }
 
         function loadImageFile(file) {
             const reader = new FileReader();
+
             reader.onload = (e) => {
                 const img = new Image();
+
                 img.onload = () => {
                     loadedImage = img;
                     originalImage.src = e.target.result;
@@ -589,8 +645,10 @@
                     downloadBtn.disabled = true;
                     checkCanUpscale();
                 };
+
                 img.src = e.target.result;
             };
+
             reader.readAsDataURL(file);
         }
 
@@ -603,16 +661,23 @@
                 return;
             }
 
-            showLoader(true, 'Preprocessing image...');
+            showOverlay(true, 'Preprocessing image...');
+
+            await new Promise(r => setTimeout(r, 50));
 
             try {
                 const inputTensor = preprocessImage(loadedImage);
-                showLoader(true, 'Running inference...');
+
+                showOverlay(true, 'Running inference...');
+
+                await new Promise(r => setTimeout(r, 50));
 
                 const feeds = { x: inputTensor };
                 const results = await session.run(feeds);
 
-                showLoader(true, 'Postprocessing output...');
+                showOverlay(true, 'Postprocessing output...');
+
+                await new Promise(r => setTimeout(r, 50));
 
                 const outputTensor = results.output;
                 const upscaledImg = await postprocessOutput(outputTensor, selectedScale);
@@ -624,10 +689,10 @@
                 upscaledDimensions.textContent = `${upscaledImg.width} × ${upscaledImg.height}`;
                 downloadBtn.disabled = false;
 
-                showLoader(false);
+                showOverlay(false);
             } catch (error) {
                 console.error('Upscaling failed:', error);
-                showLoader(false);
+                showOverlay(false);
                 alert(`Upscaling failed: ${error.message}`);
             }
         }
@@ -635,8 +700,10 @@
         function preprocessImage(img) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
+
             canvas.width = img.width;
             canvas.height = img.height;
+
             ctx.drawImage(img, 0, 0);
 
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -652,6 +719,7 @@
                     for (let w = 0; w < img.width; w++) {
                         const rgbaIdx = (h * img.width + w) * 4 + c;
                         const chwIdx = c * img.height * img.width + h * img.width + w;
+
                         chwData[chwIdx] = rgbaData[rgbaIdx] / 255.0;
                     }
                 }
@@ -684,8 +752,10 @@
 
             // Create canvas and ImageData
             const canvas = document.createElement('canvas');
+
             canvas.width = width;
             canvas.height = height;
+
             const ctx = canvas.getContext('2d');
             const imageData = ctx.createImageData(width, height);
             const pixels = imageData.data;
@@ -711,6 +781,7 @@
             ctx.putImageData(imageData, 0, 0);
 
             const img = new Image();
+
             img.src = canvas.toDataURL('image/png');
             img.width = width;
             img.height = canvas.height;
@@ -724,23 +795,28 @@
             }
 
             const link = document.createElement('a');
+
             link.download = `mewzoom-${selectedScale}x-${Date.now()}.png`;
             link.href = upscaledImageData.src;
+
             link.click();
         }
 
         function updateModelStatus(status, text) {
             modelStatus.className = 'status-dot';
+
             if (status === 'ready') {
                 modelStatus.classList.add('ready');
             } else if (status === 'loading') {
                 modelStatus.classList.add('loading');
             }
+
             modelStatusText.textContent = text;
         }
 
         function showLoader(visible, text = '') {
             loader.classList.toggle('visible', visible);
+
             if (text) {
                 loaderText.textContent = text;
             }
@@ -748,6 +824,7 @@
 
         function showProgress(visible) {
             progressContainer.classList.toggle('visible', visible);
+
             if (!visible) {
                 progressFill.style.width = '0%';
             }
@@ -755,14 +832,25 @@
 
         function updateProgress(percent, text) {
             progressFill.style.width = `${percent}%`;
+
             if (text) {
                 progressText.textContent = text;
             }
         }
 
+        function showOverlay(visible, text = '') {
+            loadingOverlay.classList.toggle('visible', visible);
+
+            if (text) {
+                loadingOverlayText.textContent = text;
+            }
+        }
+
         window.addEventListener('load', async () => {
             updateModelStatus('loading', 'Loading ONNX Runtime...');
+
             await loadModel(modelSelect.value);
+            
             checkCanUpscale();
         });
     </script>

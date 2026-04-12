@@ -350,6 +350,15 @@
         .model-card h3 {
             font-size: 1rem;
             margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .model-card h3 .hf-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
         }
 
         .model-card p {
@@ -525,22 +534,34 @@
             <h2>Available Models</h2>
             <div class="model-list">
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-2X" target="_blank" rel="noopener noreferrer" class="model-card">
-                    <h3>MewZoom 2X TrunkNet</h3>
+                    <h3>
+                        <span>MewZoom 2X TrunkNet</span>
+                        <img class="hf-icon" src="/images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
                     <p>2X upscaling | 5.3M parameters</p>
                     <p>Parameter-efficient, traditional architecture</p>
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-2X-Unet" target="_blank" rel="noopener noreferrer" class="model-card">
-                    <h3>MewZoom 2X UNet</h3>
+                    <h3>
+                        <span>MewZoom 2X UNet</span>
+                        <img class="hf-icon" src="/images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
                     <p>2X upscaling | 32M parameters</p>
                     <p>Higher parameter count, faster inference</p>
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-4X" target="_blank" rel="noopener noreferrer" class="model-card">
-                    <h3>MewZoom 4X TrunkNet</h3>
+                    <h3>
+                        <span>MewZoom 4X TrunkNet</span>
+                        <img class="hf-icon" src="/images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
                     <p>4X upscaling | 21M parameters</p>
                     <p>Parameter-efficient, traditional architecture</p>
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-4X-Unet" target="_blank" rel="noopener noreferrer" class="model-card">
-                    <h3>MewZoom 4X UNet</h3>
+                    <h3>
+                        <span>MewZoom 4X UNet</span>
+                        <img class="hf-icon" src="/images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
                     <p>4X upscaling | 128M parameters</p>
                     <p>Higher parameter count, faster inference</p>
                 </a>

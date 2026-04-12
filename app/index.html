@@ -447,7 +447,7 @@
     <div class="container">
         <header>
             <h1>MewZoom</h1>
-            <p class="subtitle">Ultra High-quality Image Super-Resolution in the Browser.</p>
+            <p class="subtitle">Purrfect Image Super-resolution in the Browser.</p>
         </header>
         <div class="upload-section" id="uploadSection">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -483,10 +483,6 @@
             <div class="status-item">
                 <span class="status-dot" id="modelStatus"></span>
                 <span id="modelStatusText">Model not loaded</span>
-            </div>
-            <div class="status-item">
-                <span>Image: </span>
-                <span id="imageDimensions">No image</span>
             </div>
         </div>
         <div class="progress-container" id="progressContainer">
@@ -574,6 +570,8 @@
         let inputPadRight = 0;
         let inputPadBottom = 0;
 
+        const modelCache = {};
+
         const uploadSection = document.getElementById('uploadSection');
         const fileInput = document.getElementById('fileInput');
         const modelSelect = document.getElementById('modelSelect');
@@ -581,7 +579,6 @@
         const downloadBtn = document.getElementById('downloadBtn');
         const modelStatus = document.getElementById('modelStatus');
         const modelStatusText = document.getElementById('modelStatusText');
-        const imageDimensions = document.getElementById('imageDimensions');
         const originalImage = document.getElementById('originalImage');
         const upscaledImage = document.getElementById('upscaledImage');
         const upscaledPlaceholder = document.getElementById('upscaledPlaceholder');
@@ -641,6 +638,16 @@
         downloadBtn.addEventListener('click', downloadResult);
 
         async function loadModel(modelId) {
+            if (modelCache[modelId]) {
+                session = modelCache[modelId];
+                currentModelId = modelId;
+                selectedScale = MODEL_CONFIG[modelId].scale;
+
+                updateModelStatus('ready', `Model: ${MODEL_CONFIG[modelId].name}`);
+
+                return;
+            }
+
             if (session && currentModelId === modelId) {
                 return;
             }
@@ -662,6 +669,8 @@
                     executionProviders: ['wasm'],
                     graphOptimizationLevel: 'all'
                 });
+
+                modelCache[modelId] = session;
 
                 currentModelId = modelId;
                 selectedScale = MODEL_CONFIG[modelId].scale;
@@ -692,7 +701,6 @@
                     loadedImage = img;
                     originalImage.src = e.target.result;
                     originalDimensions.textContent = `${img.width} × ${img.height}`;
-                    imageDimensions.textContent = `${img.width} × ${img.height}`;
                     previewContainer.classList.add('visible');
                     upscaledImage.style.display = 'none';
                     upscaledPlaceholder.style.display = 'block';

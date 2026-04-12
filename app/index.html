@@ -105,7 +105,6 @@
         }
 
         .model-select {
-            flex: 1;
             min-width: 250px;
         }
 
@@ -117,8 +116,7 @@
         }
 
         .model-select select {
-            width: 100%;
-            padding: 0.75rem 1rem;
+            padding: 0.75rem 1.5rem;
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 0.5rem;
@@ -130,6 +128,17 @@
         .model-select select:focus {
             outline: none;
             border-color: var(--accent);
+        }
+
+        .actions {
+            margin-left: auto;
+        }
+
+        .actions label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
         }
 
         .btn {
@@ -151,7 +160,8 @@
             background: var(--accent-hover);
         }
 
-        .btn-primary:disabled {
+        .btn-primary:disabled,
+        .btn-secondary:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -432,8 +442,13 @@
                     </optgroup>
                 </select>
             </div>
-            <button class="btn btn-primary" id="upscaleBtn" disabled>Upscale Image</button>
-            <button class="btn btn-secondary" id="downloadBtn" disabled>Download Result</button>
+            <div class="actions">
+                <label for="upscaleBtn">Actions</label>
+                <div class="buttons">
+                    <button class="btn btn-primary" id="upscaleBtn" disabled>Upscale Image</button>
+                    <button class="btn btn-secondary" id="downloadBtn" disabled>Download Result</button>
+                </div>
+            </div>
         </div>
         <div class="status-bar">
             <div class="status-item">
@@ -480,24 +495,24 @@
             <h2>Available Models</h2>
             <div class="model-list">
                 <div class="model-card">
-                    <h3>MewZoom 2X (TrunkNet)</h3>
-                    <p>2x upscaling | ~23 MB</p>
-                    <p>Fast inference, efficient</p>
+                    <h3>MewZoom 2X TrunkNet</h3>
+                    <p>2X upscaling | ~23 MB</p>
+                    <p>Parameter-efficient, traditional architecture</p>
                 </div>
                 <div class="model-card">
-                    <h3>MewZoom 2X (UNet)</h3>
-                    <p>2x upscaling | ~90 MB</p>
-                    <p>Higher quality, larger model</p>
+                    <h3>MewZoom 2X UNet</h3>
+                    <p>2X upscaling | ~90 MB</p>
+                    <p>Higher parameter count, faster inference</p>
                 </div>
                 <div class="model-card">
-                    <h3>MewZoom 4X (TrunkNet)</h3>
-                    <p>4x upscaling | ~80 MB</p>
-                    <p>Fast inference, efficient</p>
+                    <h3>MewZoom 4X TrunkNet</h3>
+                    <p>4X upscaling | ~80 MB</p>
+                    <p>Parameter-efficient, traditional architecture</p>
                 </div>
                 <div class="model-card">
-                    <h3>MewZoom 4X (UNet)</h3>
-                    <p>4x upscaling | ~350 MB</p>
-                    <p>Highest quality, largest model</p>
+                    <h3>MewZoom 4X UNet</h3>
+                    <p>4X upscaling | ~350 MB</p>
+                    <p>Higher parameter count, faster inference</p>
                 </div>
             </div>
         </div>
@@ -583,6 +598,7 @@
         });
 
         upscaleBtn.addEventListener('click', upscaleImage);
+
         downloadBtn.addEventListener('click', downloadResult);
 
         async function loadModel(modelId) {
@@ -767,9 +783,9 @@
                 for (let w = 0; w < width; w++) {
                     const pixelIdx = (h * width + w) * 4;
                     
-                    const r = data[h * width + w];                    // Channel 0
-                    const g = data[height * width + h * width + w];  // Channel 1
-                    const b = data[2 * height * width + h * width + w]; // Channel 2
+                    const r = data[h * width + w];
+                    const g = data[height * width + h * width + w];
+                    const b = data[2 * height * width + h * width + w];
                     
                     pixels[pixelIdx] = Math.round(Math.max(0, Math.min(255, r * 255)));
                     pixels[pixelIdx + 1] = Math.round(Math.max(0, Math.min(255, g * 255)));
@@ -783,6 +799,7 @@
             const img = new Image();
 
             img.src = canvas.toDataURL('image/png');
+
             img.width = width;
             img.height = canvas.height;
 
@@ -791,6 +808,8 @@
 
         function downloadResult() {
             if (!upscaledImageData) {
+                alert('No upscaled image to download yet!');
+
                 return;
             }
 

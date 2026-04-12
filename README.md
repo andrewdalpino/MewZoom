@@ -14,7 +14,7 @@ A family of open-source super-resolution models with cat-like vision. Pre-traine
 
 ## Demo
 
-Check out the [https://andrewdalpino.github.io/MewZoom/app](Web UI) for upscaling images in the browser.
+Check out the [Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser.
 
 ## Code Repository
 

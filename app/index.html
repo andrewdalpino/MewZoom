@@ -732,6 +732,7 @@
                     upscaledPlaceholder.style.display = 'block';
                     upscaledDimensions.textContent = '';
                     downloadBtn.disabled = true;
+                    
                     checkCanUpscale();
                 };
 
@@ -963,6 +964,29 @@
             await loadModel(modelSelect.value);
 
             checkCanUpscale();
+
+            fetch('/images/cat.png')
+                .then(res => res.blob())
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+
+                    const img = new Image();
+
+                    img.onload = () => {
+                        loadedImage = img;
+                        originalImage.src = url;
+                        originalDimensions.textContent = `${img.width} × ${img.height}`;
+                        previewContainer.classList.add('visible');
+                        upscaledImage.style.display = 'none';
+                        upscaledPlaceholder.style.display = 'block';
+                        upscaledDimensions.textContent = '';
+                        downloadBtn.disabled = true;
+
+                        checkCanUpscale();
+                    };
+                    img.src = url;
+                })
+                .catch(err => console.error('Failed to load default image:', err));
         });
     </script>
 </body>

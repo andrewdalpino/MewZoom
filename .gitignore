@@ -3,6 +3,7 @@ __pycache__/
 env/
 build/
 develop-eggs/
+node_modules/
 dist/
 lib/
 lib64/

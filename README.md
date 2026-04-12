@@ -12,11 +12,15 @@ A family of open-source super-resolution models with cat-like vision. Pre-traine
 
 - **Full RGB**: MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
 
+## Demo
+
+Check out the web UI at [https://andrewdalpino.github.io/MewZoom/app](https://andrewdalpino.github.io/MewZoom/app/) for upscaling images in the browser.
+
 ## Code Repository
 
 The training and inference code is available at [https://github.com/andrewdalpino/MewZoom](https://github.com/andrewdalpino/MewZoom).
 
-## Demos
+## Comparisons
 
 View at full resolution for best results. More comparisons can be found [here](https://github.com/andrewdalpino/MewZoom/tree/master/docs/images).
 

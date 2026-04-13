@@ -12,29 +12,13 @@ A family of open-source super-resolution models with cat-like vision. Pre-traine
 
 - **Full RGB**: MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
 
-## Demo
+## Web UI
 
-Check out the [Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser.
+Check out the [MewZoom Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser. Inference happens on your device.
 
 ## Code Repository
 
 The training and inference code is available at [https://github.com/andrewdalpino/MewZoom](https://github.com/andrewdalpino/MewZoom).
-
-## Comparisons
-
-View at full resolution for best results. More comparisons can be found [here](https://github.com/andrewdalpino/MewZoom/tree/master/docs/images).
-
-![MewZoom 2X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/cat-2x-comparison.png)
-![MewZoom 3X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/building-3x-comparison.png)
-![MewZoom 4X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/flower-4x-comparison.png)
-
-This comparison demonstrates the strength of the enhancements (deblurring, denoising, and deartifacting) applied to the upscaled image.
-
-![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-all-3.png)
-
-This comparison demonstrates the individual enhancements applied in isolation.
-
-![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-individual.png)
 
 ## Pretrained Models
 
@@ -144,6 +128,22 @@ result = Image.fromarray(output_image, "RGB")
 
 result.show()
 ```
+
+## Comparisons
+
+View at full resolution for best results. More comparisons can be found [here](https://github.com/andrewdalpino/MewZoom/tree/master/docs/images).
+
+![MewZoom 2X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/cat-2x-comparison.png)
+![MewZoom 3X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/building-3x-comparison.png)
+![MewZoom 4X Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/flower-4x-comparison.png)
+
+This comparison demonstrates the strength of the enhancements (deblurring, denoising, and deartifacting) applied to the upscaled image.
+
+![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-all-3.png)
+
+This comparison demonstrates the individual enhancements applied in isolation.
+
+![MewZoom Ctrl Enhancement Comparison](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/ctrl-compare-individual.png)
 
 ## References
 

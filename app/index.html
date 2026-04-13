@@ -475,13 +475,13 @@
             <div class="model-select">
                 <label for="modelSelect">Select Model</label>
                 <select id="modelSelect">
-                    <optgroup label="TrunkNet">
-                        <option value="andrewdalpino/MewZoom-V1-2X">MewZoom 2X (TrunkNet)</option>
-                        <option value="andrewdalpino/MewZoom-V1-4X">MewZoom 4X (TrunkNet)</option>
-                    </optgroup>
                     <optgroup label="UNet">
                         <option value="andrewdalpino/MewZoom-V1-2X-Unet">MewZoom 2X (UNet)</option>
                         <option value="andrewdalpino/MewZoom-V1-4X-Unet">MewZoom 4X (UNet)</option>
+                    </optgroup>
+                    <optgroup label="TrunkNet">
+                        <option value="andrewdalpino/MewZoom-V1-2X">MewZoom 2X (TrunkNet)</option>
+                        <option value="andrewdalpino/MewZoom-V1-4X">MewZoom 4X (TrunkNet)</option>
                     </optgroup>
                 </select>
             </div>
@@ -732,7 +732,7 @@
                     upscaledPlaceholder.style.display = 'block';
                     upscaledDimensions.textContent = '';
                     downloadBtn.disabled = true;
-                    
+
                     checkCanUpscale();
                 };
 
@@ -751,21 +751,21 @@
                 return;
             }
 
-            showOverlay(true, 'Preprocessing image...');
+            showOverlay(true, 'Preprocessing image ...');
 
             await new Promise(r => setTimeout(r, 50));
 
             try {
                 const inputTensor = preprocessImage(loadedImage);
 
-                showOverlay(true, 'Running inference...');
+                showOverlay(true, 'Running inference ...');
 
                 await new Promise(r => setTimeout(r, 50));
 
                 const feeds = { x: inputTensor };
                 const results = await session.run(feeds);
 
-                showOverlay(true, 'Postprocessing output...');
+                showOverlay(true, 'Postprocessing output ...');
 
                 await new Promise(r => setTimeout(r, 50));
 

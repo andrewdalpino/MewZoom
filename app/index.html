@@ -709,7 +709,9 @@
 
             showProgress(true);
 
-            updateProgress(0, 'Connecting to HuggingFace Hub ...');
+            updateProgress(0, 'Connecting to HuggingFace Hub');
+
+            updateModelStatus('loading', `Model: ${MODEL_CONFIG[modelId].name} ...`);
 
             try {
                 session = null;
@@ -718,7 +720,7 @@
 
                 const modelUrl = `https://huggingface.co/${modelId}/resolve/main/model.onnx`;
 
-                updateProgress(20, `Downloading model: ${MODEL_CONFIG[modelId].name}...`);
+                updateProgress(20, `Downloading model: ${MODEL_CONFIG[modelId].name} ...`);
 
                 session = await ort.InferenceSession.create(modelUrl, {
                     executionProviders: ['wasm'],
@@ -988,7 +990,7 @@
         }
 
         window.addEventListener('load', async () => {
-            updateModelStatus('loading', 'Loading ONNX Runtime...');
+            updateModelStatus('loading', 'Loading ONNX Runtime ...');
 
             await loadModel(modelSelect.value);
 
@@ -1013,6 +1015,7 @@
 
                         checkCanUpscale();
                     };
+
                     img.src = url;
                 })
                 .catch(err => console.error('Failed to load default image:', err));

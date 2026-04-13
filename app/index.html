@@ -71,9 +71,9 @@
         }
 
         h1 {
-            font-size: 2.5rem;
+            font-size: 3.5rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
+            background: linear-gradient(135deg, var(--accent), #ec4899);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -482,7 +482,7 @@
 <body>
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
-        <p class="loading-overlay-text" id="loadingOverlayText">Processing image...</p>
+        <p class="loading-overlay-text" id="loadingOverlayText">Processing image ...</p>
     </div>
     <div class="top-nav">
         <div class="status-bar">
@@ -709,12 +709,12 @@
 
             showProgress(true);
 
-            updateProgress(0, 'Connecting to HuggingFace Hub...');
+            updateProgress(0, 'Connecting to HuggingFace Hub ...');
 
             try {
                 session = null;
 
-                updateProgress(10, 'Loading ONNX Runtime...');
+                updateProgress(10, 'Loading ONNX Runtime ...');
 
                 const modelUrl = `https://huggingface.co/${modelId}/resolve/main/model.onnx`;
 

@@ -370,7 +370,7 @@
         }
 
         .model-card:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
         }
 
         .model-card h3 {
@@ -515,13 +515,16 @@
             <div class="model-select">
                 <label for="modelSelect">Select Model</label>
                 <select id="modelSelect">
-                    <optgroup label="UNet">
-                        <option value="andrewdalpino/MewZoom-V1-2X-Unet">MewZoom 2X (UNet)</option>
-                        <option value="andrewdalpino/MewZoom-V1-4X-Unet">MewZoom 4X (UNet)</option>
+                    <optgroup label="V1">
+                        <option value="andrewdalpino/MewZoom-V1-2X-Unet">MewZoom V1 2X (UNet)</option>
+                        <option value="andrewdalpino/MewZoom-V1-2X">MewZoom V1 2X (TrunkNet)</option>
+                        <option value="andrewdalpino/MewZoom-V1-4X-Unet">MewZoom V1 4X (UNet)</option>
+                        <option value="andrewdalpino/MewZoom-V1-4X">MewZoom V1 4X (TrunkNet)</option>
                     </optgroup>
-                    <optgroup label="TrunkNet">
-                        <option value="andrewdalpino/MewZoom-V1-2X">MewZoom 2X (TrunkNet)</option>
-                        <option value="andrewdalpino/MewZoom-V1-4X">MewZoom 4X (TrunkNet)</option>
+                    <optgroup label="V0">
+                        <option value="andrewdalpino/MewZoom-V0-2X">MewZoom V0 2X</option>
+                        <option value="andrewdalpino/MewZoom-V0-3X">MewZoom V0 3X</option>
+                        <option value="andrewdalpino/MewZoom-V0-4X">MewZoom V0 4X</option>
                     </optgroup>
                 </select>
             </div>
@@ -569,15 +572,15 @@
             <div class="model-list">
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-2X" target="_blank" rel="noopener noreferrer" class="model-card">
                     <h3>
-                        <span>MewZoom 2X TrunkNet</span>
+                        <span>MewZoom V1 2X TrunkNet</span>
                         <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
                     </h3>
                     <p>2X upscaling | 5.3M parameters</p>
-                    <p>Parameter-efficient, traditional architecture</p>
+                    <p>Parameter-efficient, large receptive field</p>
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-2X-Unet" target="_blank" rel="noopener noreferrer" class="model-card">
                     <h3>
-                        <span>MewZoom 2X UNet</span>
+                        <span>MewZoom V1 2X UNet</span>
                         <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
                     </h3>
                     <p>2X upscaling | 32M parameters</p>
@@ -585,19 +588,43 @@
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-4X" target="_blank" rel="noopener noreferrer" class="model-card">
                     <h3>
-                        <span>MewZoom 4X TrunkNet</span>
+                        <span>MewZoom V1 4X TrunkNet</span>
                         <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
                     </h3>
                     <p>4X upscaling | 21M parameters</p>
-                    <p>Parameter-efficient, traditional architecture</p>
+                    <p>Parameter-efficient, large receptive field</p>
                 </a>
                 <a href="https://huggingface.co/andrewdalpino/MewZoom-V1-4X-Unet" target="_blank" rel="noopener noreferrer" class="model-card">
                     <h3>
-                        <span>MewZoom 4X UNet</span>
+                        <span>MewZoom V1 4X UNet</span>
                         <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
                     </h3>
                     <p>4X upscaling | 128M parameters</p>
                     <p>Higher parameter count, faster inference</p>
+                </a>
+                <a href="https://huggingface.co/andrewdalpino/MewZoom-V0-2X" target="_blank" rel="noopener noreferrer" class="model-card">
+                    <h3>
+                        <span>MewZoom V0 2X</span>
+                        <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
+                    <p>2X upscaling | 1.8M parameters</p>
+                    <p>Parameter-efficient, trunknet architecture</p>
+                </a>
+                <a href="https://huggingface.co/andrewdalpino/MewZoom-V0-3X" target="_blank" rel="noopener noreferrer" class="model-card">
+                    <h3>
+                        <span>MewZoom V0 3X</span>
+                        <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
+                    <p>3X upscaling | 3.5M parameters</p>
+                    <p>Parameter-efficient, trunknet architecture</p>
+                </a>
+                <a href="https://huggingface.co/andrewdalpino/MewZoom-V0-4X" target="_blank" rel="noopener noreferrer" class="model-card">
+                    <h3>
+                        <span>MewZoom V0 4X</span>
+                        <img class="hf-icon" src="./images/hf-logo.svg" alt="HuggingFace Hub">
+                    </h3>
+                    <p>4X upscaling | 14M parameters</p>
+                    <p>Parameter-efficient, trunknet architecture</p>
                 </a>
             </div>
         </div>
@@ -611,10 +638,13 @@
         ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/";
 
         const MODEL_CONFIG = {
-            'andrewdalpino/MewZoom-V1-2X': { scale: 2, name: 'MewZoom 2X (TrunkNet)' },
-            'andrewdalpino/MewZoom-V1-2X-Unet': { scale: 2, name: 'MewZoom 2X (UNet)' },
-            'andrewdalpino/MewZoom-V1-4X': { scale: 4, name: 'MewZoom 4X (TrunkNet)' },
-            'andrewdalpino/MewZoom-V1-4X-Unet': { scale: 4, name: 'MewZoom 4X (UNet)' }
+            'andrewdalpino/MewZoom-V1-2X': { scale: 2, name: 'MewZoom V1 2X (TrunkNet)', input_field: 'x' },
+            'andrewdalpino/MewZoom-V1-2X-Unet': { scale: 2, name: 'MewZoom V1 2X (UNet)', input_field: 'x' },
+            'andrewdalpino/MewZoom-V1-4X': { scale: 4, name: 'MewZoom V1 4X (TrunkNet)', input_field: 'x' },
+            'andrewdalpino/MewZoom-V1-4X-Unet': { scale: 4, name: 'MewZoom V1 4X (UNet)', input_field: 'x' },
+            'andrewdalpino/MewZoom-V0-2X': { scale: 2, name: 'MewZoom V0 2X', input_field: 'input' },
+            'andrewdalpino/MewZoom-V0-3X': { scale: 3, name: 'MewZoom V0 3X', input_field: 'input' },
+            'andrewdalpino/MewZoom-V0-4X': { scale: 4, name: 'MewZoom V0 4X', input_field: 'input' },
         };
 
         let session = null;
@@ -793,7 +823,10 @@
 
                 await new Promise(r => setTimeout(r, 50));
 
-                const feeds = { x: inputTensor };
+                const input_field = MODEL_CONFIG[currentModelId].input_field;
+
+                const feeds = { [input_field]:inputTensor };
+
                 const results = await session.run(feeds);
 
                 showOverlay(true, 'Postprocessing output ...');
@@ -813,7 +846,9 @@
                 showOverlay(false);
             } catch (error) {
                 console.error('Upscaling failed:', error);
+
                 showOverlay(false);
+
                 alert(`Upscaling failed: ${error.message}`);
             }
         }

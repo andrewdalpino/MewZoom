@@ -1031,7 +1031,7 @@
 
             checkCanUpscale();
 
-            fetch('/images/cat.png')
+            fetch('./images/cat.png')
                 .then(res => res.blob())
                 .then(blob => {
                     const url = URL.createObjectURL(blob);

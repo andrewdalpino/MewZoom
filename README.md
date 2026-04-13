@@ -14,7 +14,9 @@ A family of open-source super-resolution models with cat-like vision. Pre-traine
 
 ## Web UI
 
-Check out the [MewZoom Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser. Inference happens on your device.
+Check out the [MewZoom Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser. Inference happens on your device and your data never leaves the browser.
+
+![MewZoom Web Screenshot](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom-web-screenshot.png)
 
 ## Code Repository
 

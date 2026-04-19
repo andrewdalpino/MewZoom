@@ -59,10 +59,16 @@ class RelativisticBCELoss(Module):
     Relativistic average BCE with logits loss for generative adversarial network training.
     """
 
-    def __init__(self):
+    def __init__(self, real_label_jitter: float, fake_label_jitter: float):
         super().__init__()
 
+        assert 0.0 <= real_label_jitter < 1.0, "Real label jitter must be in [0, 1)."
+        assert 0.0 <= fake_label_jitter < 1.0, "Fake label jitter must be in [0, 1)."
+
         self.bce = BCEWithLogitsLoss()
+
+        self.real_label_jitter = real_label_jitter
+        self.fake_label_jitter = fake_label_jitter
 
     def forward_critic(self, y_pred_fake: Tensor, y_pred_real: Tensor) -> Tensor:
         """
@@ -84,8 +90,15 @@ class RelativisticBCELoss(Module):
 
         y_pred = torch.cat((y_pred_fake, y_pred_real))
 
-        y_fake = torch.zeros_like(y_pred_fake)
-        y_real = torch.ones_like(y_pred_real)
+        if self.fake_label_jitter > 0.0:
+            y_fake = torch.rand_like(y_pred_fake) * self.fake_label_jitter
+        else:
+            y_fake = torch.zeros_like(y_pred_fake)
+
+        if self.real_label_jitter > 0.0:
+            y_real = 1.0 - torch.rand_like(y_pred_real) * self.real_label_jitter
+        else:
+            y_real = torch.ones_like(y_pred_real)
 
         y = torch.cat((y_fake, y_real))
 

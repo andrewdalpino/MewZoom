@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--num_dataset_processes", default=8, type=int)
     parser.add_argument("--target_resolution", default=256, type=int)
     parser.add_argument("--min_gaussian_blur", default=0.0, type=float)
-    parser.add_argument("--max_gaussian_blur", default=2.0, type=float)
+    parser.add_argument("--max_gaussian_blur", default=1.0, type=float)
     parser.add_argument("--min_gaussian_noise", default=0.0, type=float)
     parser.add_argument("--max_gaussian_noise", default=0.1, type=float)
     parser.add_argument("--min_compression", default=0.0, type=float)
@@ -62,14 +62,15 @@ def main():
     parser.add_argument("--upscaler_max_gradient_norm", default=1.0, type=float)
     parser.add_argument("--pixel_weight", default=1.0, type=float)
     parser.add_argument("--degradation_weight", default=0.1, type=float)
-    parser.add_argument("--adversarial_weight", default=0.001, type=float)
-    parser.add_argument("--critic_learning_rate", default=1e-4, type=float)
+    parser.add_argument("--adversarial_weight", default=0.01, type=float)
+    parser.add_argument("--real_label_jitter", default=0.1, type=float)
+    parser.add_argument("--fake_label_jitter", default=0.0, type=float)
+    parser.add_argument("--critic_learning_rate", default=5e-4, type=float)
     parser.add_argument("--critic_momentum_decay", default=0.1, type=float)
     parser.add_argument("--critic_max_gradient_norm", default=1.0, type=float)
-    parser.add_argument("--critic_step_ratio", default=3, type=int)
     parser.add_argument("--critic_spectral_norm_iterations", default=1, type=int)
     parser.add_argument("--num_epochs", default=50, type=int)
-    parser.add_argument("--critic_warmup_epochs", default=1, type=int)
+    parser.add_argument("--critic_step_ratio", default=1, type=int)
     parser.add_argument(
         "--critic_model_size", default="small", choices=Bouncer.AVAILABLE_MODEL_SIZES
     )
@@ -210,7 +211,7 @@ def main():
 
     l1_loss = L1Loss()
     l2_loss = MSELoss()
-    bce_loss = RelativisticBCELoss()
+    bce_loss = RelativisticBCELoss(args.real_label_jitter, args.fake_label_jitter)
 
     combined_loss = WeightedMultitaskLoss(
         [
@@ -273,8 +274,6 @@ def main():
         total_upscaler_batches, total_critic_batches = 0, 0
         total_upscaler_steps, total_critic_steps = 0, 0
 
-        is_warmup = epoch <= args.critic_warmup_epochs
-
         critic_optimizer.zero_grad()
         upscaler_optimizer.zero_grad()
 
@@ -285,9 +284,11 @@ def main():
             y_orig = y_orig.to(args.device, non_blocking=True)
             y_deg = y_deg.to(args.device, non_blocking=True)
 
-            train_upscaler = not is_warmup and batch % args.critic_step_ratio == 0
+            train_upscaler = batch % args.critic_step_ratio == 0
 
-            update_critic_this_batch = batch % args.gradient_accumulation_steps == 0
+            update_critic_this_batch = (
+                total_critic_batches % args.gradient_accumulation_steps == 0
+            )
 
             with amp_context:
                 u_pred_sr, u_pred_deg = upscaler.forward(x)
@@ -358,10 +359,6 @@ def main():
                 total_u_bce += u_bce.item()
 
                 total_upscaler_batches += 1
-
-        # Prevent divide by zero errors when no updates were made to the upscaler this epoch.
-        total_upscaler_batches = max(1, total_upscaler_batches)
-        total_upscaler_steps = max(1, total_upscaler_steps)
 
         average_pixel_loss = total_pixel_loss / total_upscaler_batches
         average_degradation_loss = total_degradation_loss / total_upscaler_batches

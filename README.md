@@ -14,7 +14,7 @@ A family of open-source super-resolution models with cat-like vision. Pre-traine
 
 ## Web Demo
 
-Check out the [MewZoom Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser. Inference happens on your device and your data never leaves the browser. Note that due to the limitations of Web Assembly only CPU with max 4GB of memory is supported.
+Check out the [MewZoom Web UI](https://andrewdalpino.github.io/MewZoom/app) for upscaling images in the browser. Inference happens on your device and your data never leaves the browser. Note that, due to the limitations of Web Assembly, only CPU with max 4GB of memory is supported.
 
 ![MewZoom Web Screenshot](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom-web-screenshot.png)
 

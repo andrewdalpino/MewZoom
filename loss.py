@@ -35,7 +35,7 @@ class VGGLoss(Module):
     def num_params(self) -> int:
         num_params = 0
 
-        for module in (self.vgg22, self.vgg54):
+        for module in [self.vgg22, self.vgg54]:
             num_params += sum(param.numel() for param in module.parameters())
 
         return num_params
@@ -44,12 +44,12 @@ class VGGLoss(Module):
         y_pred_vgg22 = self.vgg22.forward(y_pred)
         y_vgg22 = self.vgg22.forward(y)
 
-        vgg22_loss = self.mse.forward(y_pred_vgg22, y_vgg22)
+        vgg22_loss = self.mse.forward(y_pred_vgg22, y_vgg22.detach())
 
         y_pred_vgg54 = self.vgg54.forward(y_pred_vgg22)
         y_vgg54 = self.vgg54.forward(y_vgg22)
 
-        vgg54_loss = self.mse.forward(y_pred_vgg54, y_vgg54)
+        vgg54_loss = self.mse.forward(y_pred_vgg54, y_vgg54.detach())
 
         return vgg22_loss, vgg54_loss
 

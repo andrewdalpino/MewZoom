@@ -2,13 +2,15 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of open-source super-resolution models with cat-like vision. Pre-trained on a diverse set of high-quality images and fine-tuned with an adversarial network, MewZoom transforms your fuzzy images into crystal-clear high-resolution masterpieces with exceptional realism. In addition to upscaling images by 2X, 3X, 4X, or 8X the original size, MewZoom's degradation-aware training enables it to surgically identify and remove blur, noise, and compression artifacts without removing details.
+A family of open-source super-resolution models with cat-like vision - pre-trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism. Mew Zoom upscales your images by 2X, 3X, 4X, or 8X the original size while  identifying and removing blur, noise, and compression artifacts.
 
 ## Key Features
 
 - **Fast and scalable**: MewZoom incorporates parameter-efficiency into the architecture requiring less parameters than models with similar performance.
 
-- **Ultra clarity**: MewZoom is trained to predict and remove blur, noise, and compression artifacts in addition to upscaling.
+- **Multiple architectures**: Choose from the parameter-efficient TrunkNet architecture or the larger UNet architecture with multi-scale embeddings.
+
+- **Ultra clarity**: MewZoom is explicitly trained to identify and remove blur, noise, and compression artifacts using a auxillary training objective.
 
 - **Full RGB**: MewZoom operates within the full RGB color domain enhancing both luminance and chrominance for the best possible image quality.
 
@@ -28,10 +30,10 @@ The latest pretrained models are available on HuggingFace Hub. They use the newe
 
 | Name | Upscale | Architecture | Channels | Layers | Parameters | Library Version |
 | --- | --- | --- | --- | --- | --- | --- |
-| [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
 | [andrewdalpino/MewZoom-V1-2X-Unet](https://huggingface.co/andrewdalpino/MewZoom-V1-2X-Unet) | 2X | UNet | 48/96/192/384 | 4/4/4/4 | 32M | 1.x |
-| [andrewdalpino/MewZoom-V1-4X](https://huggingface.co/andrewdalpino/MewZoom-V1-4X) | 4X | TrunkNet | 96 | 64 | 21M | 1.x |
+| [andrewdalpino/MewZoom-V1-2X](https://huggingface.co/andrewdalpino/MewZoom-V1-2X) | 2X | TrunkNet | 48 | 64 | 5.3M | 1.x |
 | [andrewdalpino/MewZoom-V1-4X-Unet](https://huggingface.co/andrewdalpino/MewZoom-V1-4X-Unet) | 4X | UNet | 96/192/384/768 | 4/4/4/4 | 128M | 1.x |
+| [andrewdalpino/MewZoom-V1-4X](https://huggingface.co/andrewdalpino/MewZoom-V1-4X) | 4X | TrunkNet | 96 | 64 | 21M | 1.x |
 
 ### Legacy Models
 

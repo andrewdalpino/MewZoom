@@ -72,10 +72,23 @@ class MewZoomTrunkNet(Upscaler, Module):
             upscale_ratio in self.AVAILABLE_UPSCALE_RATIOS
         ), f"Upscale ratio must be one of {self.AVAILABLE_UPSCALE_RATIOS}, but got {upscale_ratio}."
 
+        match skip_type.lower():
+            case "self-gated":
+                skip_class = SelfGatedSkipConnection
+
+            case "forward-gated":
+                skip_class = ForwardGatedSkipConnection
+
+            case "reverse-gated":
+                skip_class = ReverseGatedSkipConnection
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
         self.stem = FanOutProjection(3, num_channels)
 
         self.body = TrunkNet(
-            num_channels, num_layers, hidden_ratio, skip_type, exciter_hidden_ratio
+            num_channels, num_layers, hidden_ratio, skip_class, exciter_hidden_ratio
         )
 
         self.head = SuperResolver(num_channels, upscale_ratio)
@@ -180,6 +193,19 @@ class MewZoomUNet(Upscaler, Module):
             upscale_ratio in self.AVAILABLE_UPSCALE_RATIOS
         ), f"Upscale ratio must be one of {self.AVAILABLE_UPSCALE_RATIOS}, but got {upscale_ratio}."
 
+        match skip_type.lower():
+            case "self-gated":
+                skip_class = SelfGatedSkipConnection
+
+            case "forward-gated":
+                skip_class = ForwardGatedSkipConnection
+
+            case "reverse-gated":
+                skip_class = ReverseGatedSkipConnection
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
         self.stem = FanOutProjection(3, primary_channels)
 
         self.body = UNet(
@@ -192,7 +218,7 @@ class MewZoomUNet(Upscaler, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
-            skip_type,
+            skip_class,
             exciter_hidden_ratio,
         )
 
@@ -406,7 +432,7 @@ class TrunkNet(Module):
         num_channels: int,
         num_layers: int,
         hidden_ratio: int,
-        skip_type: str,
+        skip_class: type[Module],
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -416,7 +442,7 @@ class TrunkNet(Module):
         new_encoder_block = partial(
             EncoderBlock,
             hidden_ratio=hidden_ratio,
-            skip_type=skip_type,
+            skip_class=skip_class,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -435,16 +461,6 @@ class TrunkNet(Module):
         self.stage4 = Sequential(
             *[new_encoder_block(num_channels) for _ in range(floor(num_layers / 4))]
         )
-
-        match skip_type.lower():
-            case "self-gated":
-                skip_class = SelfGatedSkipConnection
-
-            case "forward-gated":
-                skip_class = ForwardGatedSkipConnection
-
-            case _:
-                raise ValueError("Invalid skip connection type.")
 
         new_skip_connection = partial(
             skip_class,
@@ -536,7 +552,7 @@ class UNet(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        skip_type: str,
+        skip_class: type[Module],
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -563,7 +579,7 @@ class UNet(Module):
             quaternary_channels,
             ceil(quaternary_layers / 2),
             hidden_ratio,
-            skip_type,
+            skip_class,
             exciter_hidden_ratio,
         )
 
@@ -577,7 +593,7 @@ class UNet(Module):
             primary_channels,
             floor(primary_layers / 2),
             hidden_ratio,
-            skip_type,
+            skip_class,
             exciter_hidden_ratio,
         )
 
@@ -644,7 +660,7 @@ class Encoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        skip_type: str,
+        skip_class: type[Module],
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -664,7 +680,7 @@ class Encoder(Module):
         new_encoder_block = partial(
             EncoderBlock,
             hidden_ratio=hidden_ratio,
-            skip_type=skip_type,
+            skip_class=skip_class,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -760,7 +776,7 @@ class Decoder(Module):
         quaternary_channels: int,
         quaternary_layers: int,
         hidden_ratio: int,
-        skip_type: str,
+        skip_class: type[Module],
         exciter_hidden_ratio: int,
     ):
         super().__init__()
@@ -780,7 +796,7 @@ class Decoder(Module):
         new_decoder_block = partial(
             DecoderBlock,
             hidden_ratio=hidden_ratio,
-            skip_type=skip_type,
+            skip_class=skip_class,
             exciter_hidden_ratio=exciter_hidden_ratio,
         )
 
@@ -803,16 +819,6 @@ class Decoder(Module):
         self.upsample1 = SubpixelConv2d(primary_channels, secondary_channels, 2)
         self.upsample2 = SubpixelConv2d(secondary_channels, tertiary_channels, 2)
         self.upsample3 = SubpixelConv2d(tertiary_channels, quaternary_channels, 2)
-
-        match skip_type.lower():
-            case "self-gated":
-                skip_class = SelfGatedSkipConnection
-
-            case "forward-gated":
-                skip_class = ForwardGatedSkipConnection
-
-            case _:
-                raise ValueError("Invalid skip connection type.")
 
         new_skip_connection = partial(
             skip_class, exciter_hidden_ratio=exciter_hidden_ratio
@@ -940,24 +946,14 @@ class EncoderBlock(Module):
         self,
         num_channels: int,
         hidden_ratio: int,
-        skip_type: str,
+        skip_class: type[Module],
         exciter_hidden_ratio: int,
     ):
         super().__init__()
 
         self.convnet = InvertedBottleneck(num_channels, hidden_ratio)
 
-        match skip_type.lower():
-            case "self-gated":
-                skip = SelfGatedSkipConnection(num_channels, exciter_hidden_ratio)
-
-            case "forward-gated":
-                skip = ForwardGatedSkipConnection(num_channels, exciter_hidden_ratio)
-
-            case _:
-                raise ValueError("Invalid skip connection type.")
-
-        self.skip = skip
+        self.skip = skip_class(num_channels, exciter_hidden_ratio)
 
     def initialize_weights(self) -> None:
         self.convnet.initialize_weights()
@@ -1025,8 +1021,7 @@ class InvertedBottleneck(Module):
 
 class SelfGatedSkipConnection(Module):
     """
-    A residual connection that selectively brings forward feature maps from the input based on
-    the output of the current layer.
+    A self-gating residual connection that attenuates channels by modelling channel interdependencies.
     """
 
     def __init__(self, num_channels: int, exciter_hidden_ratio: int):
@@ -1057,6 +1052,18 @@ class ForwardGatedSkipConnection(SelfGatedSkipConnection):
 
     def forward(self, x: Tensor, z: Tensor) -> Tensor:
         x = self.attention.forward(x, z)
+
+        return x + z
+
+
+class ReverseGatedSkipConnection(SelfGatedSkipConnection):
+    """
+    The opposite of a forward-gated skip connection, where the gating is based on the input feature maps
+    and applied to the output of a higher-order layer.
+    """
+
+    def forward(self, x: Tensor, z: Tensor) -> Tensor:
+        z = self.attention.forward(z, x)
 
         return x + z
 
@@ -1282,9 +1289,10 @@ class Bouncer(Critic, Module):
             - Small, 61 x 61 patch size.
             - Medium, 121 x 121 patch size.
             - Large, 181 x 181 patch size.
+            - X-Large, 241 x 241 patch size.
     """
 
-    AVAILABLE_MODEL_SIZES = {"small", "medium", "large"}
+    AVAILABLE_MODEL_SIZES = {"small", "medium", "large", "x-large"}
 
     @classmethod
     def from_preconfigured(
@@ -1327,6 +1335,16 @@ class Bouncer(Critic, Module):
                 quaternary_channels = 768
                 quaternary_layers = 3
 
+            case "x-large":
+                primary_channels = 128
+                primary_layers = 4
+                secondary_channels = 256
+                secondary_layers = 4
+                tertiary_channels = 512
+                tertiary_layers = 4
+                quaternary_channels = 1024
+                quaternary_layers = 4
+
             case _:
                 raise ValueError("Invalid model size.")
 
@@ -1360,6 +1378,19 @@ class Bouncer(Critic, Module):
     ):
         super().__init__()
 
+        match skip_type.lower():
+            case "self-gated":
+                skip_class = SelfGatedSkipConnection
+
+            case "forward-gated":
+                skip_class = ForwardGatedSkipConnection
+
+            case "reverse-gated":
+                skip_class = ReverseGatedSkipConnection
+
+            case _:
+                raise ValueError("Invalid skip connection type.")
+
         self.stem = FanOutProjection(3, primary_channels)
 
         self.body = Encoder(
@@ -1372,7 +1403,7 @@ class Bouncer(Critic, Module):
             quaternary_channels,
             quaternary_layers,
             hidden_ratio,
-            skip_type,
+            skip_class,
             exciter_hidden_ratio,
         )
 

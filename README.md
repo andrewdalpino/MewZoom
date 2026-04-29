@@ -41,12 +41,12 @@ The following legacy pretrained models are also available on HuggingFace Hub. No
 
 | Name | Upscale | Channels | Layers | Parameters | Control Modules | Library Version |
 | --- | --- | --- | --- | --- | --- | --- |
-| [andrewdalpino/MewZoom-V0-2X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-2X-Ctrl) | 2X | 48 | 20 | 1.8M | Yes | 0.2.x |
-| [andrewdalpino/MewZoom-V0-3X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-3X-Ctrl) | 3X | 54 | 30 | 3.5M | Yes | 0.2.x |
-| [andrewdalpino/MewZoom-V0-4X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-4X-Ctrl) | 4X | 96 | 40 | 14M | Yes | 0.2.x |
 | [andrewdalpino/MewZoom-V0-2X](https://huggingface.co/andrewdalpino/MewZoom-V0-2X) | 2X | 48 | 20 | 1.8M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V0-2X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-2X-Ctrl) | 2X | 48 | 20 | 1.8M | Yes | 0.2.x |
 | [andrewdalpino/MewZoom-V0-3X](https://huggingface.co/andrewdalpino/MewZoom-V0-3X) | 3X | 54 | 30 | 3.5M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V0-3X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-3X-Ctrl) | 3X | 54 | 30 | 3.5M | Yes | 0.2.x |
 | [andrewdalpino/MewZoom-V0-4X](https://huggingface.co/andrewdalpino/MewZoom-V0-4X) | 4X | 96 | 40 | 14M | No | 0.1.x |
+| [andrewdalpino/MewZoom-V0-4X-Ctrl](https://huggingface.co/andrewdalpino/MewZoom-V0-4X-Ctrl) | 4X | 96 | 40 | 14M | Yes | 0.2.x |
 
 ## Examples
 

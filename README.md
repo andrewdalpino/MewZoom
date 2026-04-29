@@ -2,7 +2,7 @@
 
 ![MewZoom Banner](https://raw.githubusercontent.com/andrewdalpino/MewZoom/master/docs/images/mewzoom_v1_banner.png)
 
-A family of open-source super-resolution models with cat-like vision - pre-trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism. Mew Zoom upscales your images by 2X, 3X, 4X, or 8X the original size while  identifying and removing blur, noise, and compression artifacts.
+A family of open-source super-resolution models with purrfect pixels. Pre-trained on a diverse set of images and fine-tuned with an adversarial network for exceptional realism, Mew Zoom upscales your images by 2X, 3X, 4X, or 8X the original size while  identifying and removing blur, noise, and artifacts.
 
 ## Key Features
 
